@@ -23,3 +23,4 @@ _testmain.go
 
 # individual excludes, to avoid accidental commits
 static/favicon.ico
+node_modules

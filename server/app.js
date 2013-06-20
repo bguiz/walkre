@@ -2,9 +2,10 @@
 //20130620 Brendan Graetz
 
 var http = require('http');
-var npmPackage = require('../package.json');
+var express = require('express');
 
 var staticPages = require('./staticPages').staticPages;
+var npmPackage = require('../package.json');
 
 var portNumber = npmPackage.config.defaults.portNumber;
 
@@ -17,17 +18,9 @@ process.argv.forEach(function(token) {
   }
 });
 
-var server = http.createServer();
+var server = express();
 
-server.on('request', function(req, resp) {
-  var responder = staticPages[req.url];
-  if (responder) {
-    responder(req, resp);
-  }
-  else {
-    staticPages.notfound(req, resp);
-  }
-});
+server.use(express.static(__dirname + '/../static'));
 
 server.listen(portNumber);
 console.log(npmPackage.name, 'v'+npmPackage.version, 'listening on port', portNumber);
