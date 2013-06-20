@@ -2,10 +2,11 @@
 //20130620 Brendan Graetz
 
 var http = require('http');
+var npmPackage = require('../package.json');
 
 var staticPages = require('./staticPages').staticPages;
 
-var portNumber = 9999;
+var portNumber = npmPackage.config.defaults.portNumber;
 
 process.argv.forEach(function(token) {
   var kv = token.split(':');
@@ -29,4 +30,4 @@ server.on('request', function(req, resp) {
 });
 
 server.listen(portNumber);
-console.log('Listening on port', portNumber);
+console.log(npmPackage.name, 'v'+npmPackage.version, 'listening on port', portNumber);
