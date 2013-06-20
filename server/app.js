@@ -17,14 +17,37 @@ process.argv.forEach(function(token) {
 
 var server = http.createServer();
 
-server.on('request', function(req, resp) {
-  resp.writeHead({
-    'Content-Type': 'text/event-stream'
-  });
-  filesys.readFile('../static/index.html', function(err, data) {
-    resp.write(data);
+var staticPages = {
+  '/': function(req, resp) {
+    resp.writeHeader(200, {
+      'Content-Type': 'text/html'
+    });
+    var fileReader = filesys.createReadStream('../static/index.html');
+    fileReader.pipe(resp, {
+      end: false
+    });
+    fileReader.on('end', function() {
+      console.log(req.url, 'served at:',(Date.now()));
+      resp.end();
+    });
+  },
+  'notfound': function(req, resp) {
+    resp.writeHeader(404, {
+      'Content-Type': 'text/plain'
+    });
+    resp.write('Could not find: ' + req.url);
     resp.end();
-  })
+  }
+};
+
+server.on('request', function(req, resp) {
+  var responder = staticPages[req.url];
+  if (responder) {
+    responder(req, resp);
+  }
+  else {
+    staticPages.notfound(req, resp);
+  }
 });
 
 server.listen(portNumber);
