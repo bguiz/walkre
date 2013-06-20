@@ -31,6 +31,13 @@ var staticPages = {
       resp.end();
     });
   },
+  '/favicon.ico': function(req, resp) {
+    resp.writeHeader(200, {
+      'Content-Type': 'image/x-icon'
+    });
+    var fileReader = filesys.createReadStream('../static/favicon.ico');
+    fileReader.pipe(resp);
+  },
   'notfound': function(req, resp) {
     resp.writeHeader(404, {
       'Content-Type': 'text/plain'
