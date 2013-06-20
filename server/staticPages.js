@@ -6,7 +6,7 @@ var staticPages = {
     resp.writeHeader(200, {
       'Content-Type': 'text/html'
     });
-    var fileReader = filesys.createReadStream('../static/index.html');
+    var fileReader = filesys.createReadStream('./static/index.html');
     fileReader.pipe(resp, {
       end: false
     });
@@ -19,7 +19,7 @@ var staticPages = {
     resp.writeHeader(200, {
       'Content-Type': 'image/x-icon'
     });
-    var fileReader = filesys.createReadStream('../static/favicon.ico');
+    var fileReader = filesys.createReadStream('./static/favicon.ico');
     fileReader.pipe(resp);
   },
   'notfound': function(req, resp) {
