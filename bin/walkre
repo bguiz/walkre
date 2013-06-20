@@ -1,0 +1,4 @@
+#!/bin/bash
+#starts the server
+
+node server/app.js

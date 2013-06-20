@@ -16,7 +16,7 @@
   "dependencies": {
   },
   "scripts": {
-    "start": "node server/app.js"
+    "start": "./bin/walkre"
   },
   "repository": {
     "type": "git",
