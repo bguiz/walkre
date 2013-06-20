@@ -25,7 +25,8 @@ server.use(express.static(__dirname + '/../static'));
 server.get('/api/v1/:entity', function(req, resp) {
   var entity = req.params.entity;
   resp.send(200, {
-    entityName: entity
+    entityName: entity,
+    query: (req.query)
   });
 });
 
