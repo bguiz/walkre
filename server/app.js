@@ -22,5 +22,12 @@ var server = express();
 
 server.use(express.static(__dirname + '/../static'));
 
+server.get('/api/v1/:entity', function(req, resp) {
+  var entity = req.params.entity;
+  resp.send(200, {
+    entityName: entity
+  });
+});
+
 server.listen(portNumber);
 console.log(npmPackage.name, 'v'+npmPackage.version, 'listening on port', portNumber);
