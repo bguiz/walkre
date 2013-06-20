@@ -1,0 +1,30 @@
+{
+  "name": "walkre",
+  "description": "walkre",
+  "author": "Brendan Graetz <redacted@my.email> (http://bguiz.com)",
+  "config": {
+    "defaults": {
+      "portNumber": 9876
+    }  
+  },
+  "homepage": "https://github.com/bguiz/walkre",
+  "private": true,
+  "version": "0.0.0",
+  "engines": {
+    "node": ">= 0.8.10"  
+  },
+  "dependencies": {
+  },
+  "scripts": {
+    "start": "node server/app.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bguiz/walkre.git"
+  },
+  "keywords": [],
+  "license": {
+    "type": "undecided",
+    "url": "https://github.com/bguiz/walkre"
+  }
+}
