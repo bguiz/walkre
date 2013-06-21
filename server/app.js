@@ -5,6 +5,7 @@ var http = require('http');
 var express = require('express');
 
 var staticPages = require('./staticPages').staticPages;
+var middleware = require('./middleware');
 var npmPackage = require('../package.json');
 
 var portNumber = npmPackage.config.defaults.portNumber;
@@ -17,58 +18,6 @@ process.argv.forEach(function(token) {
     }
   }
 });
-
-var defaultContentTypeMiddleware = function(defaultContentType) {
-  var contentTypeMiddleware = function(req, resp, next) {
-    req.headers['content-type'] = req.headers['content-type'] || defaultContentType;
-    next();
-  };
-  return contentTypeMiddleware;
-};
-
-var maxContentLength = 1e6; //~1mb
-var readRequestDataAsStringMW = function(req, resp, next) {
-  console.log('readRequestDataAsStringMW');
-  req.content = '';
-  var contentLength = 0;
-  req.on('data', function(data) {
-    req.content += data;
-    contentLength += data.length;
-    if (contentLength > maxContentLength) {
-      resp.contentType('application/json');
-      resp.send(406, JSON.stringify({
-        error: 'Data exceeded size limit'
-      }));
-      req.connection.destroy(); //without calling next()
-    }
-  });
-  req.on('end', function() {
-    next();
-  });
-};
-
-var acceptOnlyJsonMW = function(req, resp, next) {
-  console.log('acceptOnlyJsonMW', req.content);
-  try {
-    req.json = JSON.parse(req.content);
-  }
-  catch (exc) {
-    //handled in finally block
-  }
-  finally {
-    if (req.json) {
-      next();
-    }
-    else
-    {
-      resp.contentType('application/json');
-      resp.send(406, JSON.stringify({
-        error: 'Data was invalid JSON'
-      }));
-      req.connection.destroy(); //without calling next()
-    }
-  }
-};
 
 var server = express();
 server.use(express.static(__dirname + '/../static'));
@@ -86,7 +35,7 @@ curl -i -H "Content-Type: application/json" \
   -X POST -d '{"p":[1,1,2,3,5],"a":{"b":{"c":5}}}' \
   http://localhost:9876/api/v1
 */
-server.post('/api/v1', [readRequestDataAsStringMW, acceptOnlyJsonMW], function(req, resp) {
+server.post('/api/v1', [middleware.readRequestDataAsString, middleware.acceptOnlyJson], function(req, resp) {
   var out = {
     'request': req.json
   };
