@@ -9,11 +9,12 @@
   },
   "homepage": "https://github.com/bguiz/walkre",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "engines": {
     "node": ">= 0.8.10"  
   },
   "dependencies": {
+    "express": "~3.2.6"
   },
   "scripts": {
     "start": "./bin/walkre"

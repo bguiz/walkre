@@ -2,9 +2,11 @@
 //20130620 Brendan Graetz
 
 var http = require('http');
-var npmPackage = require('../package.json');
+var express = require('express');
 
 var staticPages = require('./staticPages').staticPages;
+var middleware = require('./middleware');
+var npmPackage = require('../package.json');
 
 var portNumber = npmPackage.config.defaults.portNumber;
 
@@ -17,16 +19,28 @@ process.argv.forEach(function(token) {
   }
 });
 
-var server = http.createServer();
+var server = express();
+server.use(express.static(__dirname + '/../static'));
 
-server.on('request', function(req, resp) {
-  var responder = staticPages[req.url];
-  if (responder) {
-    responder(req, resp);
-  }
-  else {
-    staticPages.notfound(req, resp);
-  }
+server.get('/api/echo', function(req, resp) {
+  resp.contentType('application/json');
+  resp.send(200, {
+    query: (req.query)
+  });
+});
+
+/*
+e.g.
+curl -i -H "Content-Type: application/json" \
+  -X POST -d '{"p":[1,1,2,3,5],"a":{"b":{"c":5}}}' \
+  http://localhost:9876/api/v1
+*/
+server.post('/api/v1', [middleware.readRequestDataAsString, middleware.acceptOnlyJson], function(req, resp) {
+  var out = {
+    'request': req.json
+  };
+  console.log(JSON.stringify(out));
+  resp.send(200, JSON.stringify(out));
 });
 
 server.listen(portNumber);

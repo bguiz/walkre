@@ -21,5 +21,9 @@ _testmain.go
 
 *.exe
 
+#log files
+nohup.out
+
 # individual excludes, to avoid accidental commits
 static/favicon.ico
+node_modules
