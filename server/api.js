@@ -1,4 +1,6 @@
 var Q = require('q');
+var url = require('url');
+var request = require('request');
 
 var npmPackage = require('../package.json');
 
@@ -17,14 +19,52 @@ exports.noSuchApi = function(deferred, apiCall) {
   });
 };
 
+var nominatimDefaults = npmPackage.config.defaults.nominatim; 
+
 exports.geoLookup = function(deferred, qry) {
-  //simulate delay for asynchronous testing
-  setTimeout(function() {
-      var result = {
-          geoLookupEcho: qry
-        };
-      deferred.resolve(result);
-  }, 1500);
+  //http://nominatim.openstreetmap.org/search
+  urlOpts = {
+    protocol: 'http',
+    hostname: 'nominatim.openstreetmap.org',
+    pathname: '/search',
+    query: {
+      format: 'json',
+      q: qry.address,
+      countrycodes: nominatimDefaults.countrycodes,
+      limit: nominatimDefaults.limit
+    }
+  };
+  var theUrl = url.format(urlOpts);
+  request(theUrl, function(err, resp, body) {
+    var result;
+    console.log('urlOpts=', urlOpts, 'err=', err, 'body=', body);
+    if (err) {
+      result = {
+        error: err
+      };
+    }
+    else {
+      var json;
+      try {
+        json = JSON.parse(body);
+      }
+      catch (exc) {
+        //do nothing, handled in finally
+      }
+      finally {
+        if (!json) {
+          json = {
+            error: 'Got result, but unable to parse',
+            details: {
+              raw: body
+            }
+          };
+        }
+        result = json;
+      }
+    }
+    deferred.resolve(result);
+  });
 };
 
 exports.geoReverse = function(deferred, qry) {
