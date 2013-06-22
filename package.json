@@ -5,7 +5,12 @@
   "config": {
     "defaults": {
       "portNumber": 9876
-    }  
+    },
+    "limits": {
+      "postContentLength": {
+        "max": 1000000
+      }
+    }
   },
   "homepage": "https://github.com/bguiz/walkre",
   "private": true,
@@ -14,7 +19,8 @@
     "node": ">= 0.8.10"  
   },
   "dependencies": {
-    "express": "~3.2.6"
+    "express": "~3.2.6",
+    "q": "~0.9.6"
   },
   "scripts": {
     "start": "./bin/walkre"
