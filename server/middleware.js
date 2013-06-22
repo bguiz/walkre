@@ -1,3 +1,5 @@
+var npmPackage = require('../package.json');
+
 exports.defaultContentType = function(defaultContentType) {
   var contentTypeMiddleware = function(req, resp, next) {
     req.headers['content-type'] = req.headers['content-type'] || defaultContentType;
@@ -6,9 +8,8 @@ exports.defaultContentType = function(defaultContentType) {
   return contentTypeMiddleware;
 };
 
-var maxContentLength = 1e6; //~1mb
+var maxContentLength = npmPackage.config.limits.postContentLength.max;
 exports.readRequestDataAsString = function(req, resp, next) {
-  console.log('readRequestDataAsStringMW');
   req.content = '';
   var contentLength = 0;
   req.on('data', function(data) {
@@ -28,7 +29,6 @@ exports.readRequestDataAsString = function(req, resp, next) {
 };
 
 exports.acceptOnlyJson = function(req, resp, next) {
-  console.log('acceptOnlyJsonMW', req.content);
   try {
     req.json = JSON.parse(req.content);
   }

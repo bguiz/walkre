@@ -39,7 +39,6 @@ server.post('/api/v1', [middleware.readRequestDataAsString, middleware.acceptOnl
   var out = {
     'request': req.json
   };
-  console.log(JSON.stringify(out));
   resp.send(200, JSON.stringify(out));
 });
 

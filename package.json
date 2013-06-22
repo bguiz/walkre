@@ -5,7 +5,12 @@
   "config": {
     "defaults": {
       "portNumber": 9876
-    }  
+    },
+    "limits": {
+      "postContentLength": {
+        "max": 1000000
+      }
+    }
   },
   "homepage": "https://github.com/bguiz/walkre",
   "private": true,
