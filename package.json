@@ -7,7 +7,8 @@
       "portNumber": 9876,
       "nominatim": {
         "countrycodes": "au",
-        "limit": 5
+        "limit": 5,
+        "reverseZoomLevel": 18
       }
     },
     "limits": {

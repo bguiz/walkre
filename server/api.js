@@ -68,11 +68,47 @@ exports.geoLookup = function(deferred, qry) {
 };
 
 exports.geoReverse = function(deferred, qry) {
-  //simulate delay for asynchronous testing
-  setTimeout(function() {
-      var result = {
-          geoReverseEcho: qry
-        };
-      deferred.resolve(result);
-  }, 250);
+  //http://nominatim.openstreetmap.org/reverse
+  urlOpts = {
+    protocol: 'http',
+    hostname: 'nominatim.openstreetmap.org',
+    pathname: '/reverse',
+    query: {
+      format: 'json',
+      lat: qry.lat,
+      lon: qry.lon,
+      zoom: nominatimDefaults.reverseZoomLevel
+    }
+  };
+  var theUrl = url.format(urlOpts);
+  request(theUrl, function(err, resp, body) {
+    var result;
+    console.log('urlOpts=', urlOpts, 'err=', err, 'body=', body);
+    if (err) {
+      result = {
+        error: err
+      };
+    }
+    else {
+      var json;
+      try {
+        json = JSON.parse(body);
+      }
+      catch (exc) {
+        //do nothing, handled in finally
+      }
+      finally {
+        if (!json) {
+          json = {
+            error: 'Got result, but unable to parse',
+            details: {
+              raw: body
+            }
+          };
+        }
+        result = json;
+      }
+    }
+    deferred.resolve(result);
+  });
 };

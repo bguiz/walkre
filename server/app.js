@@ -39,7 +39,7 @@ curl -i -X POST \
   http://localhost:9876/api/v1
 
 curl -i -X POST \
-  -d '[{"name":"geoLookup","qry":{"address":"36 Meadow Wood Walk, Narre Warren VIC 3805"}}]' \
+  -d '[{"name":"geoLookup","qry":{"address":"36 Meadow Wood Walk, Narre Warren VIC 3805"}},{"name":"geoReverse","qry":{"lat":-38.0231307,"lon":145.3003536}}]' \
   http://localhost:9876/api/v1
 
 */
