@@ -3,6 +3,7 @@
 
 var http = require('http');
 var express = require('express');
+var Q = require('q');
 
 var staticPages = require('./staticPages').staticPages;
 var middleware = require('./middleware');
@@ -33,7 +34,7 @@ server.get('/api/echo', function(req, resp) {
 /*
 e.g.
 curl -i -X POST \
-  -d '[{"name":"geoLookup","qry":{"q":"123 abc"}},{"name":"doesntExist","qry":"doesnt matter"}]' \
+  -d '[{"name":"geoLookup","qry":{"q":"123 abc"}},{"name":"geoReverse","qry":{"lat":123.456,"lon":987.543}},{"name":"doesntExist","qry":"doesnt matter"}]' \
   http://localhost:9876/api/v1
 */
 server.post('/api/v1', [middleware.readRequestDataAsString, middleware.acceptOnlyJson], function(req, resp) {
@@ -48,24 +49,23 @@ server.post('/api/v1', [middleware.readRequestDataAsString, middleware.acceptOnl
     'request': req.json,
     'response': {}
   };
-  for (var idx = 0; idx < req.json.length; ++idx) {
+  var numApiCalls = req.json.length;
+  var apiPromises = [];
+  for (var idx = 0; idx < numApiCalls; ++idx) {
     var apiCall = req.json[idx];
     var apiName = apiCall.name;
     var apiQry = apiCall.qry;
-    var apiFn = api[apiName];
-    if (apiFn) {
-      out.response[idx] = apiFn(apiQry);
+    var apiFunc = api[apiName];
+    if (!apiFunc) {
+      apiFunc = api.noSuchApi;
+      apiQry = apiCall;
     }
-    else {
-      out.response[idx] = {
-        err: 'Specified api does not exist',
-        details: {
-          apiName: apiName
-        }
-      };
-    }
+    apiPromises.push(api.async(apiFunc, apiQry));
   }
-  resp.send(200, JSON.stringify(out));
+  Q.all(apiPromises).then(function(apiResults) {
+    out.response = apiResults;
+    resp.send(200, JSON.stringify(out));
+  });
 });
 
 server.listen(portNumber);
