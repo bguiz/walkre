@@ -45,7 +45,6 @@ exports.acceptOnlyJson = function(req, resp, next) {
       resp.send(406, JSON.stringify({
         error: 'Data was invalid JSON'
       }));
-      req.connection.destroy(); //without calling next()
     }
   }
 };
