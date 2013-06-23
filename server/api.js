@@ -161,12 +161,25 @@ exports.directions = function(deferred, qry) {
                 var numTravelModeSwitches = 0;
                 for (var idx = 0; idx < steps.length; ++idx) {
                   var step = steps[idx];
-                  if (step.travel_mode !== currentTravelMode) {
+                  var travelMode;
+                  if (step.transit_details) {
+                    var line = step.transit_details.line;
+                    if (line) {
+                      var vehicle = line.vehicle;
+                      if (vehicle) {
+                        travelMode = vehicle.type;
+                      }
+                    }
+                  }
+                  if (!travelMode) {
+                    travelMode = step.travel_mode;
+                  }
+                  if (travelMode !== currentTravelMode) {
                     ++numTravelModeSwitches;
                     if (numTravelModeSwitches > 1) {
                       travelModeSummary += '-';
                     }
-                    currentTravelMode = step.travel_mode
+                    currentTravelMode = travelMode
                     travelModeSummary += currentTravelMode;
                   }
                 }
