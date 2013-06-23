@@ -83,6 +83,16 @@ exports.geoLookup = function(deferred, qry) {
   });
 };
 
+exports.gmapsGeoLookup = function(deferred, qry) {
+  console.log('gmapsGeoLookup:', qry.address);
+  var handler = function(err, body) {
+    //TODO error checking, handling
+    deferred.resolve(body);
+  };
+  var sensor = qry.sensor || googlemapsDefaults.sensor;
+  gmaps.geocode(qry.address, handler, sensor);
+};
+
 exports.geoReverse = function(deferred, qry) {
   //http://nominatim.openstreetmap.org/reverse
   urlOpts = {
@@ -272,13 +282,14 @@ exports.scrapeGeoLookup = function(deferred, qry) {
   var delayDeviation = 0;
   for (var idx = 0; idx < numScrapes; ++idx) {
     var scrapeInp = qry[idx];
-    scrapePromises.push(exports.randomDelayedAsync(exports.geoLookup, scrapeInp, delayTime, delayTime + delayDeviation));
+    scrapePromises.push(exports.randomDelayedAsync(exports.gmapsGeoLookup, scrapeInp, delayTime, delayTime + delayDeviation));
     delayTime += delayInterval;
     if (delayDeviation < maxDelayDeviation) {
       maxDelayDeviation += delayInterval;
     }
   }
   Q.all(scrapePromises).then(function(scrapeResults) {
+    //TODO post processing
     deferred.resolve(scrapeResults);
   });
 };
