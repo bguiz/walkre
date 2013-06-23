@@ -9,6 +9,10 @@
         "countrycodes": "au",
         "limit": 5,
         "reverseZoomLevel": 18
+      },
+      "googlemaps": {
+        "sensor": "false",
+        "directionsTravelMode": "walking"
       }
     },
     "limits": {
