@@ -162,19 +162,21 @@ exports.directions = function(deferred, qry) {
                 for (var idx = 0; idx < steps.length; ++idx) {
                   var step = steps[idx];
                   var travelMode;
+                  var forceSwitch = false;
                   if (step.transit_details) {
                     var line = step.transit_details.line;
                     if (line) {
                       var vehicle = line.vehicle;
                       if (vehicle) {
                         travelMode = vehicle.type;
+                        forceSwitch = true;
                       }
                     }
                   }
                   if (!travelMode) {
                     travelMode = step.travel_mode;
                   }
-                  if (travelMode !== currentTravelMode) {
+                  if (forceSwitch || (travelMode !== currentTravelMode)) {
                     ++numTravelModeSwitches;
                     if (numTravelModeSwitches > 1) {
                       travelModeSummary += '-';
