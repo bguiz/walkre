@@ -271,7 +271,7 @@ exports.directions = function(deferred, qry) {
   gmaps.directions(qry.fromAddress, qry.toAddress, handler, sensor, optionalParams);
 };
 
-var delayInterval = 5000;
+var delayInterval = 2500;
 var maxDelayDeviation = 30000;
 exports.scrapeGeoLookup = function(deferred, qry) {
   //expects qry to be an array of objects, each of which has an address property
@@ -289,7 +289,18 @@ exports.scrapeGeoLookup = function(deferred, qry) {
     }
   }
   Q.all(scrapePromises).then(function(scrapeResults) {
-    //TODO post processing
-    deferred.resolve(scrapeResults);
+    var out = [];
+    console.log('scrapeResults=', scrapeResults);
+    for (var idx = 0; idx < numScrapes; ++idx) {
+      var scrapeResult = scrapeResults[idx];
+      var scrapeInp = qry[idx];
+      var selectedResult = scrapeResult.results[0];
+      var singleResult = scrapeInp; //TODO use a deep clone instead
+      singleResult.lat = selectedResult.geometry.location.lat;
+      singleResult.lon = selectedResult.geometry.location.lng;
+      out.push(singleResult);
+    }
+    console.log('out=', out);
+    deferred.resolve(out);
   });
 };
