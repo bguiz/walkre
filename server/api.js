@@ -2,6 +2,7 @@ var Q = require('q');
 var url = require('url');
 var request = require('request');
 var gmaps = require('googlemaps');
+var fs = require('fs');
 
 var npmPackage = require('../package.json');
 
@@ -271,8 +272,8 @@ exports.directions = function(deferred, qry) {
   gmaps.directions(qry.fromAddress, qry.toAddress, handler, sensor, optionalParams);
 };
 
-var delayInterval = 2500;
-var maxDelayDeviation = 30000;
+var delayInterval = 1637;
+var maxDelayDeviation = 27659;
 exports.scrapeGeoLookup = function(deferred, qry) {
   //expects qry to be an array of objects, each of which has an address property
   //the result of this will be a copy of the qry object, but with each object having a lat and lon property set on it
@@ -301,6 +302,36 @@ exports.scrapeGeoLookup = function(deferred, qry) {
       out.push(singleResult);
     }
     console.log('out=', out);
+    console.log('JSON.stringify(out)=', JSON.stringify(out));
+    fs.writeFileSync('./out.str.json', JSON.stringify(out)); //DEBUG only
     deferred.resolve(out);
+  });
+};
+
+exports.ptv = function(deferred, qry) {
+  //http://melbournetransport.co/api/melbserver/search/v0.1/do.js
+  urlOpts = {
+    protocol: 'http',
+    hostname: 'melbournetransport.co',
+    pathname: '/api/melbserver/search/v0.1/do.js',
+    query: {
+      oname: qry.from.address,
+      olat: qry.from.lat,
+      olong: qry.from.lon,
+      dname: qry.to.address,
+      dlat: qry.to.lat,
+      dlong: qry.to.lon,
+      ddate: qry.date,  // '20130131'
+      dtime: qry.time  // '2359'
+    }
+  };
+  var theUrl = url.format(urlOpts);
+  console.log('ptv:', urlOpts);
+  request(theUrl, function(err, resp, body) {
+    //TODO post processing
+    if (typeof body === 'string') {
+      body = JSON.parse(body);
+    }
+    deferred.resolve(body);
   });
 };
