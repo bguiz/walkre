@@ -8,6 +8,7 @@ var Q = require('q');
 var staticPages = require('./staticPages').staticPages;
 var middleware = require('./middleware');
 var api = require('./api');
+var locations = require('./locations');
 var npmPackage = require('../package.json');
 
 var portNumber = npmPackage.config.defaults.portNumber;
@@ -79,6 +80,22 @@ server.post('/api/v1', [middleware.readRequestDataAsString, middleware.acceptOnl
   Q.all(apiPromises).then(function(apiResults) {
     out.response = apiResults;
     resp.send(200, JSON.stringify(out));
+  });
+});
+
+/*
+e.g.
+
+curl -i -X GET
+  http://localhost:9876/scrapeLocations?name=supermarkets
+
+*/
+server.get('/scrapeLocations', function(req, resp) {
+  console.log('req.query=', req.query);
+  var qry = locations[req.query.name];
+  var promise = api.async(api.scrapeGeoLookup, qry);
+  promise.then(function(result) {
+    resp.send(200, JSON.stringify(result));
   });
 });
 

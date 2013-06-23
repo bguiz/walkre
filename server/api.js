@@ -11,6 +11,19 @@ exports.async = function(fn, qry) {
   return deferred.promise;
 };
 
+exports.delayedAsync = function(fn, qry, delayMs) {
+  var deferred = Q.defer();
+  setTimeout(function() {
+    fn(deferred, qry);
+  }, delayMs);
+  return deferred.promise;
+};
+
+exports.randomDelayedAsync = function(fn, qry, minDelayMs, maxDelayMs) {
+  var delayMs = Math.floor(Math.random() * (maxDelayMs - minDelayMs + 1) + minDelayMs);
+  return exports.delayedAsync(fn, qry, delayMs);
+};
+
 exports.noSuchApi = function(deferred, apiCall) {
   deferred.resolve({
     err: 'Specified api does not exist',
@@ -37,6 +50,7 @@ exports.geoLookup = function(deferred, qry) {
     }
   };
   var theUrl = url.format(urlOpts);
+  console.log('geoLookup:', qry.address);
   request(theUrl, function(err, resp, body) {
     var result;
     //console.log('urlOpts=', urlOpts, 'err=', err, 'body=', body);
@@ -245,4 +259,26 @@ exports.directions = function(deferred, qry) {
   // Pull request: https://github.com/moshen/node-googlemaps/pull/24
   // Commit: https://github.com/bguiz/node-googlemaps/commit/7b462021521908070f3d8b8dfdce496a0866fb96
   gmaps.directions(qry.fromAddress, qry.toAddress, handler, sensor, optionalParams);
+};
+
+var delayInterval = 5000;
+var maxDelayDeviation = 30000;
+exports.scrapeGeoLookup = function(deferred, qry) {
+  //expects qry to be an array of objects, each of which has an address property
+  //the result of this will be a copy of the qry object, but with each object having a lat and lon property set on it
+  var scrapePromises = [];
+  var numScrapes = qry.length;
+  var delayTime = 0;
+  var delayDeviation = 0;
+  for (var idx = 0; idx < numScrapes; ++idx) {
+    var scrapeInp = qry[idx];
+    scrapePromises.push(exports.randomDelayedAsync(exports.geoLookup, scrapeInp, delayTime, delayTime + delayDeviation));
+    delayTime += delayInterval;
+    if (delayDeviation < maxDelayDeviation) {
+      maxDelayDeviation += delayInterval;
+    }
+  }
+  Q.all(scrapePromises).then(function(scrapeResults) {
+    deferred.resolve(scrapeResults);
+  });
 };

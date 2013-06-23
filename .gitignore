@@ -27,3 +27,4 @@ nohup.out
 # individual excludes, to avoid accidental commits
 static/favicon.ico
 node_modules
+server/locations-min.js

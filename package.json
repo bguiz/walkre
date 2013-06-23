@@ -7,7 +7,7 @@
       "portNumber": 9876,
       "nominatim": {
         "countrycodes": "au",
-        "limit": 5,
+        "limit": 1,
         "reverseZoomLevel": 18
       },
       "googlemaps": {
