@@ -43,7 +43,11 @@ curl -i -X POST \
   http://localhost:9876/api/v1
 
 curl -i -X POST \
-  -d '{"name":"directions","qry":{"mode":"walking",fromAddress":"36 Meadow Wood Walk, Narre Warren VIC 3805","toAddress":"23 New Street, Dandenong VIC 3175"}}' \
+  -d '[{"name":"directions","qry":{"mode":"walking","fromAddress":"36 Meadow Wood Walk, Narre Warren VIC 3805","toAddress":"23 New Street, Dandenong VIC 3175"}}]' \
+  http://localhost:9876/api/v1
+
+curl -i -X POST \
+  -d '[{"name":"directions","qry":{"mode":"transit","fromAddress":"6 Mirrabooka Crescent Little Bay NSW 2036","toAddress":"UNSW, High Street Kensington, NSW 2052, Australia"}}]' \
   http://localhost:9876/api/v1
 
 */
