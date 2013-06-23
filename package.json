@@ -4,7 +4,16 @@
   "author": "Brendan Graetz <redacted@my.email> (http://bguiz.com)",
   "config": {
     "defaults": {
-      "portNumber": 9876
+      "portNumber": 9876,
+      "nominatim": {
+        "countrycodes": "au",
+        "limit": 5,
+        "reverseZoomLevel": 18
+      },
+      "googlemaps": {
+        "sensor": "false",
+        "directionsTravelMode": "walking"
+      }
     },
     "limits": {
       "postContentLength": {
@@ -20,7 +29,10 @@
   },
   "dependencies": {
     "express": "~3.2.6",
-    "q": "~0.9.6"
+    "q": "~0.9.6",
+    "url": "~0.7.9",
+    "request": "~2.21.0",
+    "googlemaps": "~0.1.8"
   },
   "scripts": {
     "start": "./bin/walkre"

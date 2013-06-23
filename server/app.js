@@ -33,9 +33,23 @@ server.get('/api/echo', function(req, resp) {
 
 /*
 e.g.
+
 curl -i -X POST \
   -d '[{"name":"geoLookup","qry":{"q":"123 abc"}},{"name":"geoReverse","qry":{"lat":123.456,"lon":987.543}},{"name":"doesntExist","qry":"doesnt matter"}]' \
   http://localhost:9876/api/v1
+
+curl -i -X POST \
+  -d '[{"name":"geoLookup","qry":{"address":"36 Meadow Wood Walk, Narre Warren VIC 3805"}},{"name":"geoReverse","qry":{"lat":-38.0231307,"lon":145.3003536}}]' \
+  http://localhost:9876/api/v1
+
+curl -i -X POST \
+  -d '[{"name":"directions","qry":{"mode":"walking","fromAddress":"36 Meadow Wood Walk, Narre Warren VIC 3805","toAddress":"23 New Street, Dandenong VIC 3175"}}]' \
+  http://localhost:9876/api/v1
+
+curl -i -X POST \
+  -d '[{"name":"directions","qry":{"mode":"transit","fromAddress":"6 Mirrabooka Crescent Little Bay NSW 2036","toAddress":"UNSW, High Street Kensington, NSW 2052, Australia"}}]' \
+  http://localhost:9876/api/v1
+
 */
 server.post('/api/v1', [middleware.readRequestDataAsString, middleware.acceptOnlyJson], function(req, resp) {
   if (Object.prototype.toString.call(req.json) !== '[object Array]') {
