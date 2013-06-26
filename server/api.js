@@ -272,9 +272,10 @@ exports.directions = function(deferred, qry) {
   gmaps.directions(qry.fromAddress, qry.toAddress, handler, sensor, optionalParams);
 };
 
-var delayInterval = 9637;
-var maxDelayDeviation = 27659;
-var scrapesPerGroup = 2;
+var scrapeDefaults = npmPackage.config.defaults.scrape;
+var delayInterval = scrapeDefaults.delayInterval;
+var maxDelayDeviation = scrapeDefaults.maxDelayDeviation;
+var scrapesPerGroup = scrapeDefaults.scrapesPerGroup;
 
 var scrapeGeoLookupGroup = function(groupInpArrSlice, groupScrapePromises, grpIdx) {
   var allGroupScrapePromise = Q.defer();

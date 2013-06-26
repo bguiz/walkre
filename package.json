@@ -13,6 +13,11 @@
       "googlemaps": {
         "sensor": "false",
         "directionsTravelMode": "walking"
+      },
+      "scrape": {
+        "delayInterval": 5637,
+        "maxDelayDeviation": 47659,
+        "scrapesPerGroup": 10
       }
     },
     "limits": {

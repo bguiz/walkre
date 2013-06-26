@@ -90,7 +90,7 @@ server.post('/api/v1', [middleware.readRequestDataAsString, middleware.acceptOnl
 /*
 e.g.
 
-curl -i -X GET
+curl -i -X GET \
   http://localhost:9876/scrapeLocations?name=supermarkets
 
 */
