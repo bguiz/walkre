@@ -25,6 +25,7 @@ _testmain.go
 nohup.out
 
 # individual excludes, to avoid accidental commits
-static/favicon.ico
-node_modules
-server/locations-min.js
+/static/favicon.ico
+/node_modules
+/server/locations-min.js
+/output
