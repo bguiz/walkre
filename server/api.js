@@ -430,3 +430,11 @@ exports.ptv = function(deferred, qry) {
     deferred.resolve(body);
   });
 };
+
+exports.score = function(deferred, qry) {
+  //TODO implement this
+  var out = {
+    echo: qry
+  };
+  deferred.resolve(out);
+};
