@@ -34,7 +34,7 @@ exports.noSuchApi = function(deferred, apiCall) {
   });
 };
 
-var nominatimDefaults = npmPackage.config.defaults.nominatim; 
+var nominatimDefaults = npmPackage.config.defaults.nominatim;
 var googlemapsDefaults = npmPackage.config.defaults.googlemaps;
 
 exports.geoLookup = function(deferred, qry) {
@@ -272,40 +272,134 @@ exports.directions = function(deferred, qry) {
   gmaps.directions(qry.fromAddress, qry.toAddress, handler, sensor, optionalParams);
 };
 
-var delayInterval = 1637;
+var delayInterval = 9637;
 var maxDelayDeviation = 27659;
+var scrapesPerGroup = 2;
+
+var scrapeGeoLookupGroup = function(groupInpArrSlice, groupScrapePromises, grpIdx) {
+  var allGroupScrapePromise = Q.defer();
+  Q.all(groupScrapePromises).then(function(groupScrapeResults) {
+    var out = [];
+    // console.log('groupScrapeResults=', JSON.stringify(groupScrapeResults));
+    console.log('groupScrapeResults.length=', groupScrapeResults.length);
+    for (var i = 0; i < groupScrapeResults.length; ++i) {
+      var scrapeResult = groupScrapeResults[i];
+      console.log('grpIdx=', grpIdx, 'i=', i, 'scrapeResult=', JSON.stringify(scrapeResult));
+      var scrapeInp = groupInpArrSlice[i];
+      console.log('scrapeInp= groupInpArrSlice['+i+']=', JSON.stringify(scrapeInp));
+
+      var singleResult = scrapeInp; //TODO use a deep clone instead
+      var selectedResult = scrapeResult.results[0]; //TODO decide what to do if there are more than one result
+      if (selectedResult && selectedResult.geometry && selectedResult.geometry.location) {
+        var location = selectedResult.geometry.location;
+        singleResult.lat = location.lat;
+        singleResult.lon = location.lng;
+      }
+      else {
+        singleResult.lat = null;
+        singleResult.lon = null;
+      }
+      console.log('singleResult=', JSON.stringify(singleResult));
+      out.push(singleResult);
+    }
+    var result = JSON.stringify(out);
+    console.log('result=', result);
+    fs.writeFileSync('./output/results.part.'+grpIdx+'.json', result); //DEBUG only
+    allGroupScrapePromise.resolve(out);
+  });
+  return allGroupScrapePromise.promise;
+};
+
 exports.scrapeGeoLookup = function(deferred, qry) {
   //expects qry to be an array of objects, each of which has an address property
   //the result of this will be a copy of the qry object, but with each object having a lat and lon property set on it
-  var scrapePromises = [];
-  var numScrapes = qry.length;
   var delayTime = 0;
   var delayDeviation = 0;
-  for (var idx = 0; idx < numScrapes; ++idx) {
-    var scrapeInp = qry[idx];
-    scrapePromises.push(exports.randomDelayedAsync(exports.gmapsGeoLookup, scrapeInp, delayTime, delayTime + delayDeviation));
-    delayTime += delayInterval;
-    if (delayDeviation < maxDelayDeviation) {
-      maxDelayDeviation += delayInterval;
+  var numScrapes = qry.length;
+  var allGroupScrapePromises = [];
+
+  var grpIdx = 0;
+  for (var globIdx = 0; globIdx < numScrapes; globIdx += scrapesPerGroup) {
+    ++grpIdx;
+    var startIdx = globIdx;
+    var endIdx = startIdx + scrapesPerGroup;
+    if (endIdx > numScrapes) {
+      endIdx = numScrapes;
     }
-  }
-  Q.all(scrapePromises).then(function(scrapeResults) {
-    var out = [];
-    console.log('scrapeResults=', scrapeResults);
-    for (var idx = 0; idx < numScrapes; ++idx) {
-      var scrapeResult = scrapeResults[idx];
+
+    var groupScrapePromises = [];
+    for (var idx = startIdx; idx < endIdx; ++idx) {
       var scrapeInp = qry[idx];
-      var selectedResult = scrapeResult.results[0];
-      var singleResult = scrapeInp; //TODO use a deep clone instead
-      singleResult.lat = selectedResult.geometry.location.lat;
-      singleResult.lon = selectedResult.geometry.location.lng;
-      out.push(singleResult);
+      var scrapePromise = exports.randomDelayedAsync(
+        exports.gmapsGeoLookup, scrapeInp, delayTime, delayTime + delayDeviation);
+      groupScrapePromises.push(scrapePromise);
+
+      delayTime += delayInterval;
+      if (delayDeviation < maxDelayDeviation) {
+        maxDelayDeviation += delayInterval;
+      }
     }
-    console.log('out=', out);
-    console.log('JSON.stringify(out)=', JSON.stringify(out));
-    fs.writeFileSync('./out.str.json', JSON.stringify(out)); //DEBUG only
-    deferred.resolve(out);
+
+    var groupInpArrSlice = qry.slice(startIdx, endIdx);
+    var allGroupScrapePromise = scrapeGeoLookupGroup(groupInpArrSlice, groupScrapePromises, grpIdx);
+    allGroupScrapePromises.push(allGroupScrapePromise);
+  }
+
+  console.log('allGroupScrapePromises.length=', allGroupScrapePromises.length);
+  Q.allSettled(allGroupScrapePromises).then(function(allGroupScrapeResults) {
+    //flatten an array of arrays into a single array
+    var out = [];
+    console.log('allGroupScrapeResults.length=', allGroupScrapeResults.length);
+    console.log('allGroupScrapeResults=', allGroupScrapeResults);
+    for (var i = 0; i < allGroupScrapeResults.length; ++i) {
+      var state = allGroupScrapeResults[i];
+      if (state.state === 'fulfilled') {
+        var groupScrapeResult = state.value;
+        console.log('groupScrapeResult.length=', groupScrapeResult.length);
+        console.log('groupScrapeResult=', groupScrapeResult);
+        for (var j = 0; j < groupScrapeResult.length; ++j) {
+          var scrapeResult = groupScrapeResult[j];
+          console.log('scrapeResult=', scrapeResult);
+          out.push(scrapeResult);
+        }
+      }
+      else
+      {
+        console.log('Group scrape', i, 'failed, reason:', state.reason);
+      }
+    }
+    var result = JSON.stringify(out);
+    console.log('result=', result);
+    fs.writeFileSync('./output/results.all.json', result); //DEBUG only
+    console.log('completed scrape');
+    deferred.resolve(result);
   });
+
+  // var scrapePromises = [];
+  // for (var idx = 0; idx < numScrapes; ++idx) {
+  //   var scrapeInp = qry[idx];
+  //   scrapePromises.push(exports.randomDelayedAsync(exports.gmapsGeoLookup, scrapeInp, delayTime, delayTime + delayDeviation));
+  //   delayTime += delayInterval;
+  //   if (delayDeviation < maxDelayDeviation) {
+  //     maxDelayDeviation += delayInterval;
+  //   }
+  // }
+  // Q.all(scrapePromises).then(function(scrapeResults) {
+  //   var out = [];
+  //   console.log('scrapeResults=', scrapeResults);
+  //   for (var idx = 0; idx < numScrapes; ++idx) {
+  //     var scrapeResult = scrapeResults[idx];
+  //     var scrapeInp = qry[idx];
+  //     var selectedResult = scrapeResult.results[0];
+  //     var singleResult = scrapeInp; //TODO use a deep clone instead
+  //     singleResult.lat = selectedResult.geometry.location.lat;
+  //     singleResult.lon = selectedResult.geometry.location.lng;
+  //     out.push(singleResult);
+  //   }
+  //   console.log('JSON.stringify(out)=', JSON.stringify(out));
+  //   fs.writeFileSync('./out.str.json', JSON.stringify(out)); //DEBUG only
+  //   deferred.resolve(out);
+  // });
 };
 
 exports.ptv = function(deferred, qry) {
