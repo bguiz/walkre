@@ -3,6 +3,7 @@ var url = require('url');
 var request = require('request');
 var gmaps = require('googlemaps');
 var fs = require('fs');
+var _ = require('underscore');
 
 var npmPackage = require('../package.json');
 
@@ -432,12 +433,79 @@ exports.ptv = function(deferred, qry) {
 };
 
 exports.score = function(deferred, qry) {
-  //TODO implement this
-  var out = {
-    echo: qry
-  };
-  deferred.resolve(out);
+  var needGeo =
+    false
+    || (qry.journeyPlanner === 'melbtrans')
+    || _.some(qry.destinations, function(destination) {
+      destination.hasOwnProperty('fixed') && (destination.fixed === true);
+    });
+  var originPromises = [];
+  var destinationPromises = [];
+  if (needGeo) {
+    //get geolocations for all locations present
+    if (!qry.origin.lat || !qry.origin.lon) {
+      var originGeoDeferred = Q.defer();
+      exports.gmapsGeoLookup(originGeoDeferred, qry.origin);
+      originPromises.push(originGeoDeferred.promise);
+    }
+    _.each(qry.destinations, function(destination) {
+      var destGeoDeferred = Q.defer();
+      exports.gmapsGeoLookup(destGeoDeferred, destination);
+      destinationPromises.push(destGeoDeferred.promise);
+    }, this);
+  }
+  var originPromisesDeferred = Q.defer();
+  Q.allSettled(originPromises).then(function(results) {
+    _.each(results, function(result) {
+      if (result.state === 'fulfilled') {
+        var val = result.value;
+        qry.origin.lat = val.lat;
+        qry.origin.lon = val.lon;
+      }
+    }, this);
+    originPromisesDeferred.resolve(qry.origin);
+  });
+  var destinationsPromisesDeferred = Q.defer();
+  Q.allSettled(destinationPromises).then(function(results) {
+    _.each(results, function(result, idx) {
+      if (result.state === 'fulfilled') {
+        var val = result.value;
+        qry.destinations[idx].location.lat = val.lat;
+        qry.destinations[idx].location.lon = val.lon;
+      }
+    }, this);
+    destinationsPromisesDeferred.resolve(qry.destinations);
+  });
+  Q.allSettled([originPromisesDeferred.promise, destinationsPromisesDeferred.promise]).then(function(results) {
+    //we don't care about the results returned, because they were modified in place in the qry object
+    //more importantly, we are now assured that all addresses have a lat and lon, if needGeo is truehe 
+
+    //get the transport information from the origin to each destination using each transport mode
+    var origin = qry.origin;
+    _.each(qry.destinations, function(destination) {
+      _.each(destination.modes, function(mode) {
+        //we have origin, destination, and mode
+        //TODO
+      });
+    }, this);
+  });
+  setTimeout(function() {deferred.resolve({echo:qry})}, 1000); //DEBUG output
 };
+
+/* {
+  "origin":{address":"36 Meadow Wood Walk, Narre Warren VIC 3805"},
+  "journeyPlanner":"melbtrans",
+  "destinations":[
+    {
+      "fixed":true,"class":"work","weight":0.8,"location":{"address":"19 Bourke Street, Melbourne, VIC 3000"},
+      "modes":[{"form":"transit","max":{"time":2400}}]
+    },
+    {
+      "class":"supermarkets","weight":0.2,
+      "modes":[{"form":"walking","weight":0.75,"max":{"distance":1000}},{"form":"driving","weight":0.25,"max":{"time":300}}]
+    }
+  ]
+} */
 
 exports.testDagQueue = function(deferred, qry) {
     var batch = [
