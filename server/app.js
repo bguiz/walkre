@@ -55,6 +55,10 @@ curl -i -X POST \
   -d '[{"name":"ptv","qry":{"from":{"address":"36 Meadow Wood Walk, Narre Warren VIC 3805","lat":-38.0231307,"lon":145.3003536},"to":{"address":"Flinders Street Station, Melbourne VIC 3000, Australia","lat":-37.818289,"lon":144.967177},"date":"20130714","time":"0830"}}]' \
   http://localhost:9876/api/v1
 
+curl -i -X POST \
+  -d '[{"name":"testDagQueue","qry":{"doesnt":"matter"}}]' \
+  http://localhost:9876/api/v1
+
 */
 server.post('/api/v1', [middleware.readRequestDataAsString, middleware.acceptOnlyJson], function(req, resp) {
   if (Object.prototype.toString.call(req.json) !== '[object Array]') {

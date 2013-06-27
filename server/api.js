@@ -438,3 +438,66 @@ exports.score = function(deferred, qry) {
   };
   deferred.resolve(out);
 };
+
+exports.testDagQueue = function(deferred, qry) {
+    var batch = [
+      {"id":"a1","depends":[],"data":{"some":"data a1"}},
+      {"id":"b1","depends":["a1"],"data":{"some":"data b1"}},
+      {"id":"b2","depends":["a1"],"data":{"some":"data b2"}},
+      {"id":"c1","depends":["b1","b2"],"data":{"some":"data c1"}},
+      {"id":"x1","depends":[],"data":{"some":"data x1"}},
+    ];
+
+    var doPromises = {};
+
+    var doData = function(data, dependsResultsHash, callback) {
+      //Not real processing, simply echoes input after a delay for async simulation purposes
+      var out = {
+        echo: {
+          data: data,
+          dependsResultsHash: dependsResultsHash
+        }
+      };
+      setTimeout(function() {
+        callback(out);
+      }, 1000);
+    };
+
+    var doLine = function(id, depIds, data) {
+      var deferred = Q.defer;
+      var dependsPromises = [];
+      for (var i = 0; i < depIds.length; ++i) {
+        var depId = depIds[i];
+        dependPromise = doPromises[depId];
+        dependsPromises.push(dependPromise);
+      }
+      Q.all(dependsPromises).then(function(dependsResults) {
+        var dependsResultsHash = {};
+        for (var i = 0; i < depIds.length; ++i) {
+          var depId = depIds[i];
+          var depResult = dependsResults[i];
+          dependsResultsHash[depId] = depResult;
+        }
+        doData(data, dependsResultsHash, function(result) {
+          deferred.resolve(result);
+        });
+      });
+      return deferred.promise;
+    }
+
+    var doBatch = function(batch) {
+      var linePromises = [];
+      for (var i = 0; i < batch.length; ++i) {
+        var line = batch[i];
+        var linePromise = doLine(line.id, line.depends, line.data);
+        linePromises.push(linePromise);
+        doPromises[line.id] = linePromise;
+      }
+      Q.all(linePromises).then(function(lineResults) {
+        console.log(lineResults);
+        deferred.resolve(lineResults);
+      });
+    };
+
+    doBatch(batch);
+};
