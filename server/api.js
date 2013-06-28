@@ -478,7 +478,7 @@ exports.score = function(deferred, qry) {
   });
   Q.allSettled([originPromisesDeferred.promise, destinationsPromisesDeferred.promise]).then(function(results) {
     //we don't care about the results returned, because they were modified in place in the qry object
-    //more importantly, we are now assured that all addresses have a lat and lon, if needGeo is truehe 
+    //more importantly, we are now assured that all addresses have a lat and lon, if needGeo is true
 
     //get the transport information from the origin to each destination using each transport mode
     var origin = qry.origin;
@@ -516,56 +516,61 @@ exports.testDagQueue = function(deferred, qry) {
       {"id":"x1","depends":[],"data":{"some":"data x1"}},
     ];
 
-    var doPromises = {};
-
-    var doData = function(data, dependsResultsHash, callback) {
+    var doData = function (data, dependsResultsHash, deferred) {
       //Not real processing, simply echoes input after a delay for async simulation purposes
       var out = {
         echo: {
           data: data,
-          dependsResultsHash: dependsResultsHash
+          depends: dependsResultsHash
         }
       };
       setTimeout(function() {
-        callback(out);
+        deferred.resolve(out);
       }, 1000);
     };
 
-    var doLine = function(id, depIds, data) {
-      var deferred = Q.defer;
+    var doLine = function(line, linePromisesHash) {
+      var lineDeferred = Q.defer();
       var dependsPromises = [];
-      for (var i = 0; i < depIds.length; ++i) {
-        var depId = depIds[i];
-        dependPromise = doPromises[depId];
+      var depIds = line.depends;
+      _.each(depIds, function(depId) {
+        var dependPromise = linePromisesHash[depId];
         dependsPromises.push(dependPromise);
-      }
-      Q.all(dependsPromises).then(function(dependsResults) {
-        var dependsResultsHash = {};
-        for (var i = 0; i < depIds.length; ++i) {
-          var depId = depIds[i];
-          var depResult = dependsResults[i];
-          dependsResultsHash[depId] = depResult;
-        }
-        doData(data, dependsResultsHash, function(result) {
-          deferred.resolve(result);
-        });
       });
-      return deferred.promise;
-    }
+      Q.allSettled(dependsPromises).then(function(dependsResults) {
+        var dependsResultsHash = {};
+        _.each(dependsResults, function(depResult, idx) {
+          if (depResult.state === 'fulfilled') {
+            var depId = depIds[idx];
+            dependsResultsHash[depId] = depResult;
+          }
+        });
+        doData(line.data, dependsResultsHash, lineDeferred);
+      });
+      return lineDeferred.promise;
+    };
 
     var doBatch = function(batch) {
+      var linePromisesHash = {};
       var linePromises = [];
-      for (var i = 0; i < batch.length; ++i) {
-        var line = batch[i];
-        var linePromise = doLine(line.id, line.depends, line.data);
+      _.each(batch, function(line) {
+        var linePromise = doLine(line, linePromisesHash);
         linePromises.push(linePromise);
-        doPromises[line.id] = linePromise;
-      }
-      Q.all(linePromises).then(function(lineResults) {
-        console.log(lineResults);
-        deferred.resolve(lineResults);
+        linePromisesHash[line.id] = linePromise;
       });
-    };
+      Q.allSettled(linePromises).then(function(lineResults) {
+        var out = [];
+        _.each(lineResults, function(lineResult, idx) {
+          var lineId = batch[idx].id;
+          out.push({
+            id: lineId,
+            response: lineResult
+          });
+        });
+        console.log(out);
+        deferred.resolve(out);
+      });
+    }
 
     doBatch(batch);
 };
