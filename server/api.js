@@ -4,6 +4,7 @@ var request = require('request');
 var gmaps = require('googlemaps');
 var fs = require('fs');
 var _ = require('underscore');
+var moment = require('moment');
 
 var npmPackage = require('../package.json');
 
@@ -404,7 +405,7 @@ exports.scrapeGeoLookup = function(deferred, qry) {
   // });
 };
 
-exports.ptv = function(deferred, qry) {
+exports.melbtrans = function(deferred, qry) {
   //http://melbournetransport.co/api/melbserver/search/v0.1/do.js
   urlOpts = {
     protocol: 'http',
@@ -422,7 +423,7 @@ exports.ptv = function(deferred, qry) {
     }
   };
   var theUrl = url.format(urlOpts);
-  console.log('ptv:', urlOpts);
+  console.log('melbtrans:', urlOpts);
   request(theUrl, function(err, resp, body) {
     //TODO post processing
     if (typeof body === 'string') {
@@ -432,10 +433,68 @@ exports.ptv = function(deferred, qry) {
   });
 };
 
+var parseDurationString = function(inp, delim) {
+  delim = delim || ' ';
+  var toks = inp.split(delim);
+  var hash = {};
+  _.each(toks, function(tok) {
+    var len = tok.length;
+    if (len > 1) {
+      var unit = tok.substring(len - 1, len);
+      var num = toke.substring(0, len - 1);
+      num = parseInt(num, 10);
+      hash[unit] = num;
+    }
+  });
+};
+
+exports.scoreOne = function(deferred, qry) {
+  //determine which API to call
+  var apiName = 'directions'; //gmaps
+  if (qry.mode.form === 'transit') {
+    if (!qry.mode.hasOwnProperty('time')) {
+      deferred.reject('If mode form is transit, mode max can only specify time');
+      return;
+    }
+    if (qry.journeyPlanner === 'melbtrans') {
+      apiName = 'melbtrans';
+    }
+  }
+  var transportDeferred = Q.defer();
+  var apiFunc = exports[apiName];
+  apiFunc(transportDeferred, transportQry);
+  transportDeferred.promise.then(function(result) {
+    var out = qry;
+    if (apiName === 'melbtrans') {
+      var trips = result.trips;
+      if (trips && trips.length > 0) {
+        //find the duration for all suggested trips and average them
+        var durationSum = 0;
+        _.each(trips, function(trip) {
+          var durationHash = parseDurationString(trip.duration);
+          var duration = moment.duration(durationHash);
+          durationSum += duration.asSeconds();
+        });
+        var averageDuration = durationSum / trips.Length;
+        var score = qry.mode.max.time / averageDuration;
+      }
+      else {
+        deferred.reject('No trips returned');
+        return;
+      }
+    }
+    else {
+      //TODO parse gmaps
+    }
+    out.raw = result;
+    deferred.resolve(out);
+  });
+};
+
 exports.score = function(deferred, qry) {
+  qry.journeyPlanner = qry.journeyPlanner || 'gmaps';
   var needGeo =
-    false
-    || (qry.journeyPlanner === 'melbtrans')
+    (qry.journeyPlanner === 'melbtrans')
     || _.some(qry.destinations, function(destination) {
       destination.hasOwnProperty('fixed') && (destination.fixed === true);
     });
@@ -481,13 +540,36 @@ exports.score = function(deferred, qry) {
     //more importantly, we are now assured that all addresses have a lat and lon, if needGeo is true
 
     //get the transport information from the origin to each destination using each transport mode
+    var orig_dest_mode = {};
+    var scorePromises = [];
     var origin = qry.origin;
     _.each(qry.destinations, function(destination) {
+      //TODO check that weights add up for destinations
       _.each(destination.modes, function(mode) {
         //we have origin, destination, and mode
-        //TODO
+        //TODO check that weights add up for modes
+        orig_dest_mode[origin.address] = 
+          orig_dest_mode[origin.address] || 
+          {origin: origin};
+        orig_dest_mode[origin.address][destination.address] = 
+          orig_dest_mode[origin.address][destination.address] || 
+          {destination: destination};
+        orig_dest_mode[origin.address][destination.address][mode.form] = 
+          orig_dest_mode[origin.address][destination.address][mode.form] || 
+          {mode: mode};
+        //now work out the transport information between this origin and this destination using this mode
+        var scoreDeferred = Q.defer();
+        scorePromises.push(scoreDeferred.promise);
+        exports.scoreOne(scoreDeferred, {
+          origin: origin,
+          destination: destination,
+          mode: mode,
+          journeyPlanner: qry.journeyPlanner
+        });
       });
     }, this);
+
+    // scorePromises.allSettled();
   });
   setTimeout(function() {deferred.resolve({echo:qry})}, 1000); //DEBUG output
 };

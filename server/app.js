@@ -52,7 +52,11 @@ curl -i -X POST \
   http://localhost:9876/api/v1
 
 curl -i -X POST \
-  -d '[{"name":"ptv","qry":{"from":{"address":"36 Meadow Wood Walk, Narre Warren VIC 3805","lat":-38.0231307,"lon":145.3003536},"to":{"address":"Flinders Street Station, Melbourne VIC 3000, Australia","lat":-37.818289,"lon":144.967177},"date":"20130714","time":"0830"}}]' \
+  -d '[{"name":"melbtrans","qry":{"from":{"address":"36 Meadow Wood Walk, Narre Warren VIC 3805","lat":-38.0231307,"lon":145.3003536},"to":{"address":"Flinders Street Station, Melbourne VIC 3000, Australia","lat":-37.818289,"lon":144.967177},"date":"20130714","time":"0830"}}]' \
+  http://localhost:9876/api/v1
+
+curl -i -X POST \
+  -d '[{"name":"testDagQueue","qry":{"doesnt":"matter"}}]' \
   http://localhost:9876/api/v1
 
 curl -i -X POST \
@@ -112,7 +116,21 @@ e.g.
 
 curl -i -X POST \
   -d '{
-        "address":"36 Meadow Wood Walk, Narre Warren VIC 3805",
+        "origin":{"address":"36 Meadow Wood Walk, Narre Warren VIC 3805"},
+        "journeyPlanner":"melbtrans",
+        "destinations":[
+          {
+            "fixed":true,"class":"work","weight":0.8,"address":"19 Bourke Street, Melbourne, VIC 3000",
+            "modes":[{"form":"transit","max":{"time":2400}}]
+          }
+        ]
+      }' \
+  http://localhost:9876/api/v1/score
+
+
+curl -i -X POST \
+  -d '{
+        "origin":{"address":"36 Meadow Wood Walk, Narre Warren VIC 3805"},
         "journeyPlanner":"melbtrans",
         "destinations":[
           {
@@ -157,6 +175,7 @@ Rules:
   - Each `mode` must specify a `form` and a `max`
     - The `mode` must be one of the follwing: `walking`, `driving`, `transit`
     - The `max` must specify either a `distance` or a `time`, and their values are in metres and seconds, respectively
+      - If the `mode`'s `form` is `transit`, then the `max` may only specify a `time`, and `distance` is not allowed.
   - If more than one `mode` is specified for a `destination`, all of them  must specify a weight, and these weights must add up to 1.
 
 Computation:
