@@ -24,6 +24,7 @@ process.argv.forEach(function(token) {
 
 var server = express();
 server.use(express.static(__dirname + '/../static'));
+server.use(express.errorHandler({ dumpExceptions: true, showStack: true }));
 
 server.get('/api/echo', function(req, resp) {
   resp.contentType('application/json');
@@ -120,7 +121,7 @@ curl -i -X POST \
         "journeyPlanner":"melbtrans",
         "destinations":[
           {
-            "fixed":true,"class":"work","weight":0.8,"address":"19 Bourke Street, Melbourne, VIC 3000",
+            "fixed":true,"class":"work","weight":0.8,"location":{"address":"19 Bourke Street, Melbourne, VIC 3000"},
             "modes":[{"form":"transit","max":{"time":2400}}]
           }
         ]
@@ -134,7 +135,7 @@ curl -i -X POST \
         "journeyPlanner":"melbtrans",
         "destinations":[
           {
-            "fixed":true,"class":"work","weight":0.8,"address":"19 Bourke Street, Melbourne, VIC 3000",
+            "fixed":true,"class":"work","weight":0.8,"location":{"address":"19 Bourke Street, Melbourne, VIC 3000"},
             "modes":[{"form":"transit","max":{"time":2400}}]
           },
           {

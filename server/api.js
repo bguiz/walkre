@@ -90,7 +90,18 @@ exports.gmapsGeoLookup = function(deferred, qry) {
   console.log('gmapsGeoLookup:', qry.address);
   var handler = function(err, body) {
     //TODO error checking, handling
-    deferred.resolve(body);
+    _.each(body.results, function(result) {
+      if (result.geometry && result.geometry.location) {
+        var geo = result.geometry.location;
+        if (geo.lat && geo.lng) {
+          body.lat = geo.lat;
+          body.lon = geo.lng;
+          deferred.resolve(body);
+          return;
+        }
+      }
+    });
+    deferred.reject('No geo coordinate found for address '+qry.adress);
   };
   var sensor = qry.sensor || googlemapsDefaults.sensor;
   gmaps.geocode(qry.address, handler, sensor);
@@ -434,25 +445,30 @@ exports.melbtrans = function(deferred, qry) {
 };
 
 var parseDurationString = function(inp, delim) {
-  delim = delim || ' ';
+  delim = delim || /\s+/;
   var toks = inp.split(delim);
   var hash = {};
   _.each(toks, function(tok) {
     var len = tok.length;
     if (len > 1) {
       var unit = tok.substring(len - 1, len);
-      var num = toke.substring(0, len - 1);
+      var num = tok.substring(0, len - 1);
       num = parseInt(num, 10);
       hash[unit] = num;
     }
   });
+  return hash;
 };
 
 exports.scoreOne = function(deferred, qry) {
   //determine which API to call
   var apiName = 'directions'; //gmaps
+  if (!qry.mode.max || !(qry.mode.max.time || qry.mode.max.distance)) {
+    deferred.reject('Mode must specify either a max time or distance');
+    return;
+  }
   if (qry.mode.form === 'transit') {
-    if (!qry.mode.hasOwnProperty('time')) {
+    if (!qry.mode.max.time) {
       deferred.reject('If mode form is transit, mode max can only specify time');
       return;
     }
@@ -462,6 +478,24 @@ exports.scoreOne = function(deferred, qry) {
   }
   var transportDeferred = Q.defer();
   var apiFunc = exports[apiName];
+  var transportQry;
+  var timeNow = moment();
+  if (apiName === 'melbtrans') {
+    transportQry = {
+      from: qry.origin,
+      to: qry.destination,
+      date: (timeNow.format('YYYYMMDD')),
+      time: (timeNow.format('HHmm'))
+    };
+  }
+  else {
+    //{"mode":"walking","fromAddress":"36 Meadow Wood Walk, Narre Warren VIC 3805","toAddress":"23 New Street, Dandenong VIC 3175"}}
+    transportQry = {
+      mode: qry.mode.form,
+      fromAddress: qry.origin.address,
+      toAddress: qry.destination.address
+    };
+  }
   apiFunc(transportDeferred, transportQry);
   transportDeferred.promise.then(function(result) {
     var out = qry;
@@ -475,8 +509,10 @@ exports.scoreOne = function(deferred, qry) {
           var duration = moment.duration(durationHash);
           durationSum += duration.asSeconds();
         });
-        var averageDuration = durationSum / trips.Length;
+        var averageDuration = durationSum / trips.length;
         var score = qry.mode.max.time / averageDuration;
+        out.score = score;
+        deferred.resolve(out);
       }
       else {
         deferred.reject('No trips returned');
@@ -509,7 +545,7 @@ exports.score = function(deferred, qry) {
     }
     _.each(qry.destinations, function(destination) {
       var destGeoDeferred = Q.defer();
-      exports.gmapsGeoLookup(destGeoDeferred, destination);
+      exports.gmapsGeoLookup(destGeoDeferred, destination.location);
       destinationPromises.push(destGeoDeferred.promise);
     }, this);
   }
@@ -520,6 +556,9 @@ exports.score = function(deferred, qry) {
         var val = result.value;
         qry.origin.lat = val.lat;
         qry.origin.lon = val.lon;
+      }
+      else {
+        console.log('originPromises allSettled:', result.error);
       }
     }, this);
     originPromisesDeferred.resolve(qry.origin);
@@ -532,46 +571,61 @@ exports.score = function(deferred, qry) {
         qry.destinations[idx].location.lat = val.lat;
         qry.destinations[idx].location.lon = val.lon;
       }
+      else {
+        console.log('destinationPromises allSettled:', result.error);
+      }
     }, this);
     destinationsPromisesDeferred.resolve(qry.destinations);
   });
   Q.allSettled([originPromisesDeferred.promise, destinationsPromisesDeferred.promise]).then(function(results) {
     //we don't care about the results returned, because they were modified in place in the qry object
     //more importantly, we are now assured that all addresses have a lat and lon, if needGeo is true
+    var scorePromises = [];
 
     //get the transport information from the origin to each destination using each transport mode
     var orig_dest_mode = {};
-    var scorePromises = [];
     var origin = qry.origin;
     _.each(qry.destinations, function(destination) {
       //TODO check that weights add up for destinations
       _.each(destination.modes, function(mode) {
         //we have origin, destination, and mode
         //TODO check that weights add up for modes
-        orig_dest_mode[origin.address] = 
-          orig_dest_mode[origin.address] || 
-          {origin: origin};
-        orig_dest_mode[origin.address][destination.address] = 
-          orig_dest_mode[origin.address][destination.address] || 
-          {destination: destination};
-        orig_dest_mode[origin.address][destination.address][mode.form] = 
-          orig_dest_mode[origin.address][destination.address][mode.form] || 
-          {mode: mode};
+        // orig_dest_mode[origin.address] = 
+        //   orig_dest_mode[origin.address] || 
+        //   {origin: origin};
+        // orig_dest_mode[origin.address][destination.address] = 
+        //   orig_dest_mode[origin.address][destination.address] || 
+        //   {destination: destination};
+        // orig_dest_mode[origin.address][destination.address][mode.form] = 
+        //   orig_dest_mode[origin.address][destination.address][mode.form] || 
+        //   {mode: mode};
         //now work out the transport information between this origin and this destination using this mode
         var scoreDeferred = Q.defer();
         scorePromises.push(scoreDeferred.promise);
         exports.scoreOne(scoreDeferred, {
           origin: origin,
-          destination: destination,
+          destination: destination.location,
           mode: mode,
           journeyPlanner: qry.journeyPlanner
         });
       });
     }, this);
 
-    // scorePromises.allSettled();
+    Q.allSettled(scorePromises).then(function(scoreResults) {
+      var out = [];
+      _.each(scoreResults, function(result) {
+        if (result.state === 'fulfilled') {
+          var score = result.value * 0.5;
+          out.push(score);
+        }
+        else {
+          console.log('scorePromises allSettled:', result.error);
+        }
+      });
+      deferred.resolve(out);
+    });
   });
-  setTimeout(function() {deferred.resolve({echo:qry})}, 1000); //DEBUG output
+  // setTimeout(function() {deferred.resolve({echo:qry})}, 1000); //DEBUG output
 };
 
 /* {
