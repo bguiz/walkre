@@ -583,22 +583,12 @@ exports.score = function(deferred, qry) {
     var scorePromises = [];
 
     //get the transport information from the origin to each destination using each transport mode
-    var orig_dest_mode = {};
     var origin = qry.origin;
     _.each(qry.destinations, function(destination) {
       //TODO check that weights add up for destinations
       _.each(destination.modes, function(mode) {
         //we have origin, destination, and mode
         //TODO check that weights add up for modes
-        // orig_dest_mode[origin.address] = 
-        //   orig_dest_mode[origin.address] || 
-        //   {origin: origin};
-        // orig_dest_mode[origin.address][destination.address] = 
-        //   orig_dest_mode[origin.address][destination.address] || 
-        //   {destination: destination};
-        // orig_dest_mode[origin.address][destination.address][mode.form] = 
-        //   orig_dest_mode[origin.address][destination.address][mode.form] || 
-        //   {mode: mode};
         //now work out the transport information between this origin and this destination using this mode
         var scoreDeferred = Q.defer();
         scorePromises.push(scoreDeferred.promise);
@@ -612,16 +602,68 @@ exports.score = function(deferred, qry) {
     }, this);
 
     Q.allSettled(scorePromises).then(function(scoreResults) {
-      var out = [];
+      var orig_dest_mode = {};
       _.each(scoreResults, function(result) {
         if (result.state === 'fulfilled') {
-          var score = result.value * 0.5;
-          out.push(score);
+          var score = result.value;
+          orig_dest_mode[score.origin.address] = 
+            orig_dest_mode[score.origin.address] || 
+            {};
+          orig_dest_mode[score.origin.address][score.destination.address] = 
+            orig_dest_mode[score.origin.address][score.destination.address] || 
+            {};
+          orig_dest_mode[score.origin.address][score.destination.address][score.mode.form] = 
+            orig_dest_mode[score.origin.address][score.destination.address][score.mode.form] || 
+            {
+              origin: score.origin,
+              destination: score.destination,
+              mode: score.mode,
+              score: score.score
+            };
         }
         else {
           console.log('scorePromises allSettled:', result.error);
         }
       });
+
+      // parse weights to calculate aggregate score, iterate over original qry rather than score results,
+      //in case some results are rejections
+      var origin = qry.origin;
+      var destinationWeightSum = 0;
+      var destinationScoreSum = 0;
+      var calcErrors = [];
+      _.each(qry.destinations, function(destination) {
+        var destinationWeight = destination.weight || 1.0;
+        destinationWeightSum += destinationWeight;
+        var modeWeightSum = 0;
+        var modeScoreSum = 0;
+        _.each(destination.modes, function(mode) {
+          var modeWeight = mode.weight || 1.0;
+          modeWeightSum += modeWeight;
+          var modeScore = 0;
+          if (
+            orig_dest_mode[origin.address] &&
+            orig_dest_mode[origin.address][destination.location.address] &&
+            orig_dest_mode[origin.address][destination.location.address][mode.form]) {
+            modeScore = orig_dest_mode[origin.address][destination.location.address][mode.form].score;
+          }
+          else {
+            calcErrors.push('No data available for journey from '+origin.address+
+              ' to '+destination.address+
+              ' by '+mode.form);
+          }
+          modeScoreSum += (modeScore * modeWeight);
+        });
+        destinationScoreSum += (modeScoreSum / modeWeightSum * destinationWeight);
+      });
+      destinationScoreSum = destinationScoreSum / destinationWeightSum;
+      //divide by weight sums to scale to 0 to 1 range
+
+      var out = {
+        score: (destinationScoreSum * 0.5),
+        errors: calcErrors,
+        raw: scoreResults
+      };
       deferred.resolve(out);
     });
   });
