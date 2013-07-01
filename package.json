@@ -37,7 +37,9 @@
     "q": "~0.9.6",
     "url": "~0.7.9",
     "request": "~2.21.0",
-    "googlemaps": "~0.1.8"
+    "googlemaps": "~0.1.8",
+    "underscore":"~1.4.4",
+    "moment":"~2.0.0"
   },
   "scripts": {
     "start": "./bin/walkre"
