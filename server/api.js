@@ -3,6 +3,8 @@ var url = require('url');
 var request = require('request');
 var gmaps = require('googlemaps');
 var fs = require('fs');
+var _ = require('underscore');
+var moment = require('moment');
 
 var npmPackage = require('../package.json');
 
@@ -88,7 +90,18 @@ exports.gmapsGeoLookup = function(deferred, qry) {
   console.log('gmapsGeoLookup:', qry.address);
   var handler = function(err, body) {
     //TODO error checking, handling
-    deferred.resolve(body);
+    _.each(body.results, function(result) {
+      if (result.geometry && result.geometry.location) {
+        var geo = result.geometry.location;
+        if (geo.lat && geo.lng) {
+          body.lat = geo.lat;
+          body.lon = geo.lng;
+          deferred.resolve(body);
+          return;
+        }
+      }
+    });
+    deferred.reject('No geo coordinate found for address '+qry.adress);
   };
   var sensor = qry.sensor || googlemapsDefaults.sensor;
   gmaps.geocode(qry.address, handler, sensor);
@@ -403,7 +416,7 @@ exports.scrapeGeoLookup = function(deferred, qry) {
   // });
 };
 
-exports.ptv = function(deferred, qry) {
+exports.melbtrans = function(deferred, qry) {
   //http://melbournetransport.co/api/melbserver/search/v0.1/do.js
   urlOpts = {
     protocol: 'http',
@@ -421,7 +434,7 @@ exports.ptv = function(deferred, qry) {
     }
   };
   var theUrl = url.format(urlOpts);
-  console.log('ptv:', urlOpts);
+  console.log('melbtrans:', urlOpts);
   request(theUrl, function(err, resp, body) {
     //TODO post processing
     if (typeof body === 'string') {
@@ -429,4 +442,393 @@ exports.ptv = function(deferred, qry) {
     }
     deferred.resolve(body);
   });
+};
+
+var parseDurationString = function(inp, delim) {
+  delim = delim || /\s+/;
+  var toks = inp.split(delim);
+  var hash = {};
+  _.each(toks, function(tok) {
+    var len = tok.length;
+    if (len > 1) {
+      var unit = tok.substring(len - 1, len);
+      var num = tok.substring(0, len - 1);
+      num = parseInt(num, 10);
+      hash[unit] = num;
+    }
+  });
+  return hash;
+};
+
+exports.scoreOne = function(deferred, qry) {
+  //determine which API to call
+  var apiName = 'directions'; //gmaps
+  if (!qry.mode.max || !(qry.mode.max.time || qry.mode.max.distance)) {
+    deferred.reject('Mode must specify either a max time or distance');
+    return;
+  }
+  if (qry.mode.form === 'transit') {
+    if (!qry.mode.max.time) {
+      deferred.reject('If mode form is transit, mode max can only specify time');
+      return;
+    }
+    if (qry.journeyPlanner === 'melbtrans') {
+      apiName = 'melbtrans';
+    }
+  }
+  var transportDeferred = Q.defer();
+  var apiFunc = exports[apiName];
+  var transportQry;
+  var timeNow = moment();
+  if (apiName === 'melbtrans') {
+    transportQry = {
+      from: qry.origin,
+      to: qry.destination,
+      date: (timeNow.format('YYYYMMDD')),
+      time: (timeNow.format('HHmm'))
+    };
+  }
+  else {
+    //{"mode":"walking","fromAddress":"36 Meadow Wood Walk, Narre Warren VIC 3805","toAddress":"23 New Street, Dandenong VIC 3175"}}
+    transportQry = {
+      mode: qry.mode.form,
+      fromAddress: qry.origin.address,
+      toAddress: qry.destination.address
+    };
+  }
+  apiFunc(transportDeferred, transportQry);
+  transportDeferred.promise.then(function(result) {
+    var out = qry;
+    if (apiName === 'melbtrans') {
+      var trips = result.trips;
+      if (trips && trips.length > 0) {
+        //find the duration for all suggested trips and average them
+        var durationSum = 0;
+        _.each(trips, function(trip) {
+          var durationHash = parseDurationString(trip.duration);
+          var duration = moment.duration(durationHash);
+          durationSum += duration.asSeconds();
+        });
+        var averageDuration = durationSum / trips.length;
+        var score = qry.mode.max.time / averageDuration;
+        out.score = score;
+        deferred.resolve(out);
+      }
+      else {
+        deferred.reject('No trips returned');
+        return;
+      }
+    }
+    else {
+      //TODO parse gmaps
+    }
+    out.raw = result;
+    deferred.resolve(out);
+  });
+};
+
+// validateErrs.push('');
+// validateErrs.push('Destination #'+idx+' should ');
+// validateErrs.push('mode #'+modeIdx+' destination #'+idx+' should ');
+exports.score = function(deferred, qry) {
+  var validateErrs = [];
+  if (!_.isObject(qry)) {
+    validateErrs.push('Query must be an object');
+  }
+  else {
+    if (!(qry.origin && _.isObject(qry.origin))) {
+      validateErrs.push('Query must contain an origin');
+    }
+    else {
+      if (!(qry.origin.address && _.isString(qry.origin.address))) {
+        validateErrs.push('Query must contain a location with an address');
+      }
+    }
+    if (!(qry.destinations && _.isArray(qry.destinations) && qry.destinations.length > 0)) {
+      validateErrs.push('Query must contain at least one destination');
+    }
+    else {
+      var numDestinations = qry.destinations.length;
+      _.each(qry.destinations, function(dest, idx) {
+        if (!(dest || _.isObject(dest))) {
+          validateErrs.push('Destination #'+idx+' should be an object');
+        }
+        else {
+          if (numDestinations > 1 && !(dest.weight && _.isNumber(dest.weight))) {
+            validateErrs.push('Destination #'+idx+' should specify a numeric weight as there are more than 1');
+          }
+          if (!(dest.location && dest.location.address && _.isString(dest.location.address))) {
+            validateErrs.push('Destination #'+idx+' should specify an address');
+          }
+          if (!(dest.modes && _.isArray(dest.modes) && dest.modes.length > 0)) {
+            validateErrs.push('Destination #'+idx+' should specify at least one mode');
+          }
+          else {
+            var numModes = dest.modes.length;
+            _.each(dest.modes, function(mode, modeIdx) {
+              if (!(mode && _.isObject(mode))) {
+                validateErrs.push('mode #'+modeIdx+' destination #'+idx+' should be an object');
+              }
+              else {
+                if (!(mode.form &&
+                      (mode.form === 'walking' || mode.form === 'driving' || mode.form === 'transit')
+                  )) {
+                  validateErrs.push('mode #'+modeIdx+' destination #'+idx+' should specify a mode that is one of walking, driving, or transit');
+                }
+                if (numModes > 1 && !(mode.weight && _.isNumber(mode.weight))) {
+                  validateErrs.push('mode #'+modeIdx+' destination #'+idx+' should specify a numeric weight');
+                }
+                if (!(mode.max && _.isObject(mode.max))) {
+                  validateErrs.push('mode #'+modeIdx+' destination #'+idx+' should specify a max that is an object');
+                }
+                else {
+                  if (!(
+                      (mode.max.time && _.isNumber(mode.max.time)) ||
+                      (mode.max.distance && _.isNumber(mode.max.distance))
+                    )) {
+                    validateErrs.push('mode #'+modeIdx+' destination #'+idx+' should specify either a numeric time or a numeric distance in max');
+                  }
+                  else {
+                    if (mode.form === 'transit' && mode.max.distance) {
+                      validateErrs.push('mode #'+modeIdx+' destination #'+idx+' may only specify a max time if its form is transit');
+                    }
+                  }
+                }
+              }
+            });
+          }
+        }
+      });
+    }
+  }
+  if (validateErrs.length > 0) {
+    deferred.reject({
+      msg:'Score could not be computed',
+      errors: validateErrs
+    });
+    return;
+  }
+  qry.journeyPlanner = qry.journeyPlanner || 'gmaps';
+  var needGeo =
+    (qry.journeyPlanner === 'melbtrans')
+    || _.some(qry.destinations, function(destination) {
+      destination.hasOwnProperty('fixed') && (destination.fixed === true);
+    });
+  var originPromises = [];
+  var destinationPromises = [];
+  if (needGeo) {
+    //get geolocations for all locations present
+    if (!qry.origin.lat || !qry.origin.lon) {
+      var originGeoDeferred = Q.defer();
+      exports.gmapsGeoLookup(originGeoDeferred, qry.origin);
+      originPromises.push(originGeoDeferred.promise);
+    }
+    _.each(qry.destinations, function(destination) {
+      var destGeoDeferred = Q.defer();
+      exports.gmapsGeoLookup(destGeoDeferred, destination.location);
+      destinationPromises.push(destGeoDeferred.promise);
+    }, this);
+  }
+  var originPromisesDeferred = Q.defer();
+  Q.allSettled(originPromises).then(function(results) {
+    _.each(results, function(result) {
+      if (result.state === 'fulfilled') {
+        var val = result.value;
+        qry.origin.lat = val.lat;
+        qry.origin.lon = val.lon;
+      }
+      else {
+        console.log('originPromises allSettled:', result.error);
+      }
+    }, this);
+    originPromisesDeferred.resolve(qry.origin);
+  });
+  var destinationsPromisesDeferred = Q.defer();
+  Q.allSettled(destinationPromises).then(function(results) {
+    _.each(results, function(result, idx) {
+      if (result.state === 'fulfilled') {
+        var val = result.value;
+        qry.destinations[idx].location.lat = val.lat;
+        qry.destinations[idx].location.lon = val.lon;
+      }
+      else {
+        console.log('destinationPromises allSettled:', result.error);
+      }
+    }, this);
+    destinationsPromisesDeferred.resolve(qry.destinations);
+  });
+  Q.allSettled([originPromisesDeferred.promise, destinationsPromisesDeferred.promise]).then(function(results) {
+    //we don't care about the results returned, because they were modified in place in the qry object
+    //more importantly, we are now assured that all addresses have a lat and lon, if needGeo is true
+    var scorePromises = [];
+
+    //get the transport information from the origin to each destination using each transport mode
+    var origin = qry.origin;
+    _.each(qry.destinations, function(destination) {
+      //TODO check that weights add up for destinations
+      _.each(destination.modes, function(mode) {
+        //we have origin, destination, and mode
+        //TODO check that weights add up for modes
+        //now work out the transport information between this origin and this destination using this mode
+        var scoreDeferred = Q.defer();
+        scorePromises.push(scoreDeferred.promise);
+        exports.scoreOne(scoreDeferred, {
+          origin: origin,
+          destination: destination.location,
+          mode: mode,
+          journeyPlanner: qry.journeyPlanner
+        });
+      });
+    }, this);
+
+    Q.allSettled(scorePromises).then(function(scoreResults) {
+      var orig_dest_mode = {};
+      _.each(scoreResults, function(result) {
+        if (result.state === 'fulfilled') {
+          var score = result.value;
+          orig_dest_mode[score.origin.address] = 
+            orig_dest_mode[score.origin.address] || 
+            {};
+          orig_dest_mode[score.origin.address][score.destination.address] = 
+            orig_dest_mode[score.origin.address][score.destination.address] || 
+            {};
+          orig_dest_mode[score.origin.address][score.destination.address][score.mode.form] = 
+            orig_dest_mode[score.origin.address][score.destination.address][score.mode.form] || 
+            {
+              origin: score.origin,
+              destination: score.destination,
+              mode: score.mode,
+              score: score.score
+            };
+        }
+        else {
+          console.log('scorePromises allSettled:', result.error);
+        }
+      });
+
+      // parse weights to calculate aggregate score, iterate over original qry rather than score results,
+      //in case some results are rejections
+      var origin = qry.origin;
+      var destinationWeightSum = 0;
+      var destinationScoreSum = 0;
+      var calcErrors = [];
+      _.each(qry.destinations, function(destination) {
+        var destinationWeight = destination.weight || 1.0;
+        destinationWeightSum += destinationWeight;
+        var modeWeightSum = 0;
+        var modeScoreSum = 0;
+        _.each(destination.modes, function(mode) {
+          var modeWeight = mode.weight || 1.0;
+          modeWeightSum += modeWeight;
+          var modeScore = 0;
+          if (
+            orig_dest_mode[origin.address] &&
+            orig_dest_mode[origin.address][destination.location.address] &&
+            orig_dest_mode[origin.address][destination.location.address][mode.form]) {
+            modeScore = orig_dest_mode[origin.address][destination.location.address][mode.form].score;
+          }
+          else {
+            calcErrors.push('No data available for journey from '+origin.address+
+              ' to '+destination.address+
+              ' by '+mode.form);
+          }
+          modeScoreSum += (modeScore * modeWeight);
+        });
+        destinationScoreSum += (modeScoreSum / modeWeightSum * destinationWeight);
+      });
+      destinationScoreSum = destinationScoreSum / destinationWeightSum;
+      //divide by weight sums to scale to 0 to 1 range
+
+      var out = {
+        score: (destinationScoreSum * 0.5),
+        errors: calcErrors,
+        raw: scoreResults
+      };
+      deferred.resolve(out);
+    });
+  });
+  // setTimeout(function() {deferred.resolve({echo:qry})}, 1000); //DEBUG output
+};
+
+/* {
+  "origin":{address":"36 Meadow Wood Walk, Narre Warren VIC 3805"},
+  "journeyPlanner":"melbtrans",
+  "destinations":[
+    {
+      "fixed":true,"class":"work","weight":0.8,"location":{"address":"19 Bourke Street, Melbourne, VIC 3000"},
+      "modes":[{"form":"transit","max":{"time":2400}}]
+    },
+    {
+      "class":"supermarkets","weight":0.2,
+      "modes":[{"form":"walking","weight":0.75,"max":{"distance":1000}},{"form":"driving","weight":0.25,"max":{"time":300}}]
+    }
+  ]
+} */
+
+exports.testDagQueue = function(deferred, qry) {
+    var batch = [
+      {"id":"a1","depends":[],"data":{"some":"data a1"}},
+      {"id":"b1","depends":["a1"],"data":{"some":"data b1"}},
+      {"id":"b2","depends":["a1"],"data":{"some":"data b2"}},
+      {"id":"c1","depends":["b1","b2"],"data":{"some":"data c1"}},
+      {"id":"x1","depends":[],"data":{"some":"data x1"}},
+    ];
+
+    var doData = function (data, dependsResultsHash, deferred) {
+      //Not real processing, simply echoes input after a delay for async simulation purposes
+      var out = {
+        echo: {
+          data: data,
+          depends: dependsResultsHash
+        }
+      };
+      setTimeout(function() {
+        deferred.resolve(out);
+      }, 1000);
+    };
+
+    var doLine = function(line, linePromisesHash) {
+      var lineDeferred = Q.defer();
+      var dependsPromises = [];
+      var depIds = line.depends;
+      _.each(depIds, function(depId) {
+        var dependPromise = linePromisesHash[depId];
+        dependsPromises.push(dependPromise);
+      });
+      Q.allSettled(dependsPromises).then(function(dependsResults) {
+        var dependsResultsHash = {};
+        _.each(dependsResults, function(depResult, idx) {
+          if (depResult.state === 'fulfilled') {
+            var depId = depIds[idx];
+            dependsResultsHash[depId] = depResult;
+          }
+        });
+        doData(line.data, dependsResultsHash, lineDeferred);
+      });
+      return lineDeferred.promise;
+    };
+
+    var doBatch = function(batch) {
+      var linePromisesHash = {};
+      var linePromises = [];
+      _.each(batch, function(line) {
+        var linePromise = doLine(line, linePromisesHash);
+        linePromises.push(linePromise);
+        linePromisesHash[line.id] = linePromise;
+      });
+      Q.allSettled(linePromises).then(function(lineResults) {
+        var out = [];
+        _.each(lineResults, function(lineResult, idx) {
+          var lineId = batch[idx].id;
+          out.push({
+            id: lineId,
+            response: lineResult
+          });
+        });
+        console.log(out);
+        deferred.resolve(out);
+      });
+    }
+
+    doBatch(batch);
 };
