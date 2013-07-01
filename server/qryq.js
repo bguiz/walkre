@@ -1,9 +1,24 @@
 var Q = require('q');
 var _ = require('underscore');
 
+        // errs.push('Line #'+idx+' should ');
 var validateParallel = function(qry) {
   var errs = [];
-  //TODO perform validation
+  if (!(qry && _.isArray(qry) && qry.length > 0)) {
+    errs.push('Query should be an array with at least one element');
+  }
+  else {
+    _.each(qry, function(line, idx) {
+      if (!(line && _.isObject(line))) {
+        errs.push('Line #'+idx+' should be an object');
+      }
+      else {
+        if (!(line.id && line.api && line.qry)) {
+          errs.push('Line #'+idx+' should have an id,an api, and a qry');
+        }
+      }
+    });
+  }
   return errs;
 };
 
