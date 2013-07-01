@@ -201,6 +201,8 @@ server.post('/api/v1/score', [middleware.readRequestDataAsString, middleware.acc
   promise.then(function(result) {
     out.response = result;
     resp.send(200, JSON.stringify(out));
+  }, function(reason) {
+    resp.send(500, JSON.stringify({reason: reason}));
   });
 });
 

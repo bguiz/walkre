@@ -527,7 +527,87 @@ exports.scoreOne = function(deferred, qry) {
   });
 };
 
+// validateErrs.push('');
+// validateErrs.push('Destination #'+idx+' should ');
+// validateErrs.push('mode #'+modeIdx+' destination #'+idx+' should ');
 exports.score = function(deferred, qry) {
+  var validateErrs = [];
+  if (!_.isObject(qry)) {
+    validateErrs.push('Query must be an object');
+  }
+  else {
+    if (!(qry.origin && _.isObject(qry.origin))) {
+      validateErrs.push('Query must contain an origin');
+    }
+    else {
+      if (!(qry.origin.address && _.isString(qry.origin.address))) {
+        validateErrs.push('Query must contain a location with an address');
+      }
+    }
+    if (!(qry.destinations && _.isArray(qry.destinations) && qry.destinations.length > 0)) {
+      validateErrs.push('Query must contain at least one destination');
+    }
+    else {
+      var numDestinations = qry.destinations.length;
+      _.each(qry.destinations, function(dest, idx) {
+        if (!(dest || _.isObject(dest))) {
+          validateErrs.push('Destination #'+idx+' should be an object');
+        }
+        else {
+          if (numDestinations > 1 && !(dest.weight && _.isNumber(dest.weight))) {
+            validateErrs.push('Destination #'+idx+' should specify a numeric weight as there are more than 1');
+          }
+          if (!(dest.location && dest.location.address && _.isString(dest.location.address))) {
+            validateErrs.push('Destination #'+idx+' should specify an address');
+          }
+          if (!(dest.modes && _.isArray(dest.modes) && dest.modes.length > 0)) {
+            validateErrs.push('Destination #'+idx+' should specify at least one mode');
+          }
+          else {
+            var numModes = dest.modes.length;
+            _.each(dest.modes, function(mode, modeIdx) {
+              if (!(mode && _.isObject(mode))) {
+                validateErrs.push('mode #'+modeIdx+' destination #'+idx+' should be an object');
+              }
+              else {
+                if (!(mode.form &&
+                      (mode.form === 'walking' || mode.form === 'driving' || mode.form === 'transit')
+                  )) {
+                  validateErrs.push('mode #'+modeIdx+' destination #'+idx+' should specify a mode that is one of walking, driving, or transit');
+                }
+                if (numModes > 1 && !(mode.weight && _.isNumber(mode.weight))) {
+                  validateErrs.push('mode #'+modeIdx+' destination #'+idx+' should specify a numeric weight');
+                }
+                if (!(mode.max && _.isObject(mode.max))) {
+                  validateErrs.push('mode #'+modeIdx+' destination #'+idx+' should specify a max that is an object');
+                }
+                else {
+                  if (!(
+                      (mode.max.time && _.isNumber(mode.max.time)) ||
+                      (mode.max.distance && _.isNumber(mode.max.distance))
+                    )) {
+                    validateErrs.push('mode #'+modeIdx+' destination #'+idx+' should specify either a numeric time or a numeric distance in max');
+                  }
+                  else {
+                    if (mode.form === 'transit' && mode.max.distance) {
+                      validateErrs.push('mode #'+modeIdx+' destination #'+idx+' may only specify a max time if its form is transit');
+                    }
+                  }
+                }
+              }
+            });
+          }
+        }
+      });
+    }
+  }
+  if (validateErrs.length > 0) {
+    deferred.reject({
+      msg:'Score could not be computed',
+      errors: validateErrs
+    });
+    return;
+  }
   qry.journeyPlanner = qry.journeyPlanner || 'gmaps';
   var needGeo =
     (qry.journeyPlanner === 'melbtrans')
