@@ -64,7 +64,21 @@ exports.parallel = function(deferred, qry, api) {
 
 var validateSequential = function(qry) {
   var errs = [];
-  //TODO validation
+  if (!(qry && _.isArray(qry) && qry.length > 0)) {
+    errs.push('Query should be an array with at least one element');
+  }
+  else {
+    _.each(qry, function(line, idx) {
+      if (!(line && _.isObject(line))) {
+        errs.push('Line #'+idx+' should be an object');
+      }
+      else {
+        if (!(line.id && line.api && line.qry)) {
+          errs.push('Line #'+idx+' should have an id,an api, and a qry');
+        }
+      }
+    });
+  }
   return errs;
 };
 
@@ -109,30 +123,4 @@ exports.sequential = function(deferred, qry, api) {
     );
   }
   sequentialLine(0);
-  // var apiPromises = [];
-  // _.each(qry, function(line, idx) {
-  //   var apiQry = line.qry;
-  //   var apiName = line.api;
-  //   var apiFunc = api[apiName];
-  //   if (!apiFunc) {
-  //     apiFunc = api.noSuchApi;
-  //     apiQry = apiName;
-  //   }
-  //   if (idx === 0) {
-  //     apiPromises.push(async(apiFunc, apiQry));
-  //   }
-  //   else {
-  //     //FIXME this will not work because of sequence
-  //     var prevLinePromise = apiPromises[idx - 1];
-  //     var prevLineId = qry[idx - 1].id;
-  //     prevLinePromise.then(function(prevLineResult) {
-  //       var newApiQry = _.extend(apiQry, {depends: {}});
-  //       newApiQry.depends[prevLineId] = prevLineResult;
-  //       apiPromises.push(async(apiFunc, newApiQry));
-  //     },
-  //     function(error) {
-  //       //reject
-  //     });
-  //   }
-  // });
 }
