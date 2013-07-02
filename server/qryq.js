@@ -123,11 +123,28 @@ exports.sequential = function(deferred, qry, api) {
     );
   }
   sequentialLine(0);
-}
+};
 
 var validateDependent = function(qry) {
   var errs = [];
-  //TODO validation
+  if (!(qry && _.isArray(qry) && qry.length > 0)) {
+    errs.push('Query should be an array with at least one element');
+  }
+  else {
+    _.each(qry, function(line, idx) {
+      if (!(line && _.isObject(line))) {
+        errs.push('Line #'+idx+' should be an object');
+      }
+      else {
+        if (!(line.id && line.api && line.qry)) {
+          errs.push('Line #'+idx+' should have an id, an api, and a qry');
+        }
+        if (!(line.depends && _.isArray(line.depends))) {
+          errs.push('Line #'+idx+' should have an a depends that is an array (may be empty).');
+        }
+      }
+    });
+  }
   return errs;
 };
 
