@@ -124,3 +124,75 @@ exports.sequential = function(deferred, qry, api) {
   }
   sequentialLine(0);
 }
+
+var validateDependent = function(qry) {
+  var errs = [];
+  //TODO validation
+  return errs;
+};
+
+var dependentLine = function(line, apiFunc, linePromisesHash) {
+  var lineDeferred = Q.defer();
+  var dependsPromises = [];
+  var depIds = line.depends;
+  _.each(depIds, function(depId) {
+    var dependPromise = linePromisesHash[depId];
+    dependsPromises.push(dependPromise);
+  });
+  Q.allSettled(dependsPromises).then(function(dependsResults) {
+    var dependsResultsHash = {};
+    _.each(dependsResults, function(depResult, idx) {
+      var depId = depIds[idx];
+      if (depResult.state === 'fulfilled') {
+        dependsResultsHash[depId] = depResult;
+      }
+      else {
+        dependsResultsHash[depId] = null;
+      }
+    });
+    var lineQryWithDepends = {};
+    _.extend(
+      lineQryWithDepends,
+      line.qry,
+      {dependsResults: dependsResultsHash}
+    );
+    apiFunc(lineDeferred, lineQryWithDepends);
+  });
+  return lineDeferred.promise;
+};
+
+exports.dependent = function(deferred, qry, api) {
+  var validateErrs = validateDependent(qry);
+  if (validateErrs.length > 0) {
+    deferred.reject({
+      msg: 'Invalid qryq dependent query',
+      errors: validateErrs
+    });
+    return;
+  }
+  var linePromisesHash = {};
+  var linePromises = [];
+  _.each(qry, function(line) {
+    var apiQry = line.qry;
+    var apiName = line.api;
+    var apiFunc = api[apiName];
+    if (!apiFunc) {
+      apiFunc = api.noSuchApi;
+      apiQry = apiName;
+    }
+    var linePromise = dependentLine(line, apiFunc, linePromisesHash);
+    linePromises.push(linePromise);
+    linePromisesHash[line.id] = linePromise;
+  });
+  Q.allSettled(linePromises).then(function(lineResults) {
+    var out = [];
+    _.each(lineResults, function(lineResult, idx) {
+      var lineId = qry[idx].id;
+      out.push({
+        id: lineId,
+        response: lineResult
+      });
+    });
+    deferred.resolve(out);
+  });
+};
