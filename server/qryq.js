@@ -7,8 +7,8 @@ var async = function(fn, qry) {
   return deferred.promise;
 };
 
-// errs.push('Line #'+idx+' should ');
-var validateParallel = function(qry) {
+var validateQueue = function(qry, options) {
+  var needsDepends = options && !!(options.needsDepends);
   var errs = [];
   if (!(qry && _.isArray(qry) && qry.length > 0)) {
     errs.push('Query should be an array with at least one element');
@@ -20,16 +20,21 @@ var validateParallel = function(qry) {
       }
       else {
         if (!(line.id && line.api && line.qry)) {
-          errs.push('Line #'+idx+' should have an id,an api, and a qry');
+          errs.push('Line #'+idx+' should have an id, an api, and a qry');
+        }
+        if (needsDepends) {
+          if (!(line.depends && _.isArray(line.depends))) {
+            errs.push('Line #'+idx+' should have an a depends that is an array (may be empty).');
+          }
         }
       }
     });
   }
   return errs;
-};
+}
 
 exports.parallel = function(deferred, qry, api) {
-  var validateErrs = validateParallel(qry);
+  var validateErrs = validateQueue(qry);
   if (validateErrs.length > 0) {
     deferred.reject({
       msg: 'Invalid qryq parallel query',
@@ -62,28 +67,8 @@ exports.parallel = function(deferred, qry, api) {
   });
 };
 
-var validateSequential = function(qry) {
-  var errs = [];
-  if (!(qry && _.isArray(qry) && qry.length > 0)) {
-    errs.push('Query should be an array with at least one element');
-  }
-  else {
-    _.each(qry, function(line, idx) {
-      if (!(line && _.isObject(line))) {
-        errs.push('Line #'+idx+' should be an object');
-      }
-      else {
-        if (!(line.id && line.api && line.qry)) {
-          errs.push('Line #'+idx+' should have an id,an api, and a qry');
-        }
-      }
-    });
-  }
-  return errs;
-};
-
 exports.sequential = function(deferred, qry, api) {
-  var validateErrs = validateSequential(qry);
+  var validateErrs = validateQueue(qry);
   if (validateErrs.length > 0) {
     deferred.reject({
       msg: 'Invalid qryq sequential query',
@@ -125,29 +110,6 @@ exports.sequential = function(deferred, qry, api) {
   sequentialLine(0);
 };
 
-var validateDependent = function(qry) {
-  var errs = [];
-  if (!(qry && _.isArray(qry) && qry.length > 0)) {
-    errs.push('Query should be an array with at least one element');
-  }
-  else {
-    _.each(qry, function(line, idx) {
-      if (!(line && _.isObject(line))) {
-        errs.push('Line #'+idx+' should be an object');
-      }
-      else {
-        if (!(line.id && line.api && line.qry)) {
-          errs.push('Line #'+idx+' should have an id, an api, and a qry');
-        }
-        if (!(line.depends && _.isArray(line.depends))) {
-          errs.push('Line #'+idx+' should have an a depends that is an array (may be empty).');
-        }
-      }
-    });
-  }
-  return errs;
-};
-
 var dependentLine = function(line, apiFunc, linePromisesHash) {
   var lineDeferred = Q.defer();
   var dependsPromises = [];
@@ -179,7 +141,7 @@ var dependentLine = function(line, apiFunc, linePromisesHash) {
 };
 
 exports.dependent = function(deferred, qry, api) {
-  var validateErrs = validateDependent(qry);
+  var validateErrs = validateQueue(qry, {needsDepends: true});
   if (validateErrs.length > 0) {
     deferred.reject({
       msg: 'Invalid qryq dependent query',
