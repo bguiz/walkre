@@ -106,6 +106,22 @@ curl -i -X POST \
         {"id":"q3","api":"doesntExist","qry":"doesnt matter"}
       ]' \
   http://localhost:9876/api/v1/par
+  
+curl -i -X POST \
+  -d '[
+        {"id":"q1","api":"geoLookup","qry":{"q":"123 abc"}},
+        {"id":"q2","api":"geoReverse","qry":{"lat":123.456,"lon":987.543}},
+        {"id":"q3","api":"doesntExist","qry":"doesnt matter"}
+      ]' \
+  http://localhost:9876/api/v1/seq
+  
+curl -i -X POST \
+  -d '[
+        {"id":"q1","depends":[],"api":"geoLookup","qry":{"q":"123 abc"}},
+        {"id":"q2","depends":["q1"],"api":"geoReverse","qry":{"lat":123.456,"lon":987.543}},
+        {"id":"q3","depends":["q1","q2"],"api":"doesntExist","qry":"doesnt matter"}
+      ]' \
+  http://localhost:9876/api/v1/seq
 */
 server.post('/api/v1/par', [middleware.readRequestDataAsString, middleware.acceptOnlyJson], function(req, resp) {
   var deferred = Q.defer();
@@ -116,6 +132,24 @@ server.post('/api/v1/par', [middleware.readRequestDataAsString, middleware.accep
     resp.send(500, JSON.stringify({reason: reason}));
   });
 });
+server.post('/api/v1/seq', [middleware.readRequestDataAsString, middleware.acceptOnlyJson], function(req, resp) {
+  var deferred = Q.defer();
+  qryq.sequential(deferred, req.json, api);
+  deferred.promise.then(function(result) {
+    resp.send(200, JSON.stringify(result));
+  }, function(reason) {
+    resp.send(500, JSON.stringify({reason: reason}));
+  });
+});
+// server.post('/api/v1/dep', [middleware.readRequestDataAsString, middleware.acceptOnlyJson], function(req, resp) {
+//   var deferred = Q.defer();
+//   qryq.dependendent(deferred, req.json, api);
+//   deferred.promise.then(function(result) {
+//     resp.send(200, JSON.stringify(result));
+//   }, function(reason) {
+//     resp.send(500, JSON.stringify({reason: reason}));
+//   });
+// });
 
 /*
 e.g.

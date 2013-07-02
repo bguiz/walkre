@@ -1,7 +1,13 @@
 var Q = require('q');
 var _ = require('underscore');
 
-        // errs.push('Line #'+idx+' should ');
+var async = function(fn, qry) {
+  var deferred = Q.defer();
+  fn(deferred, qry);
+  return deferred.promise;
+};
+
+// errs.push('Line #'+idx+' should ');
 var validateParallel = function(qry) {
   var errs = [];
   if (!(qry && _.isArray(qry) && qry.length > 0)) {
@@ -20,12 +26,6 @@ var validateParallel = function(qry) {
     });
   }
   return errs;
-};
-
-var async = function(fn, qry) {
-  var deferred = Q.defer();
-  fn(deferred, qry);
-  return deferred.promise;
 };
 
 exports.parallel = function(deferred, qry, api) {
@@ -61,3 +61,78 @@ exports.parallel = function(deferred, qry, api) {
     deferred.resolve(out);
   });
 };
+
+var validateSequential = function(qry) {
+  var errs = [];
+  //TODO validation
+  return errs;
+};
+
+exports.sequential = function(deferred, qry, api) {
+  var validateErrs = validateSequential(qry);
+  if (validateErrs.length > 0) {
+    deferred.reject({
+      msg: 'Invalid qryq sequential query',
+      errors: validateErrs
+    });
+    return;
+  }
+  var numApiCalls = qry.length;
+  var out = [];
+  function sequentialLine(idx) {
+    var line = qry[idx];
+    var apiQry = line.qry;
+    var apiName = line.api;
+    var apiFunc = api[apiName];
+    if (!apiFunc) {
+      apiFunc = api.noSuchApi;
+      apiQry = apiName;
+    }
+    var promise = async(apiFunc, apiQry);
+    promise.then(
+      function(result) {
+        out.push(result);
+        if (idx < numApiCalls - 1) {
+          sequentialLine(idx + 1);
+        }
+        else {
+          deferred.resolve(out);
+        }
+      },
+      function(err) {
+        deferred.reject({
+          error: 'Cannot process query '+apiQry.id,
+          detail: err,
+          incompleteResults: out
+        });
+      }
+    );
+  }
+  sequentialLine(0);
+  // var apiPromises = [];
+  // _.each(qry, function(line, idx) {
+  //   var apiQry = line.qry;
+  //   var apiName = line.api;
+  //   var apiFunc = api[apiName];
+  //   if (!apiFunc) {
+  //     apiFunc = api.noSuchApi;
+  //     apiQry = apiName;
+  //   }
+  //   if (idx === 0) {
+  //     apiPromises.push(async(apiFunc, apiQry));
+  //   }
+  //   else {
+  //     //FIXME this will not work because of sequence
+  //     var prevLinePromise = apiPromises[idx - 1];
+  //     var prevLineId = qry[idx - 1].id;
+  //     prevLinePromise.then(function(prevLineResult) {
+  //       var newApiQry = _.extend(apiQry, {depends: {}});
+  //       newApiQry.depends[prevLineId] = prevLineResult;
+  //       apiPromises.push(async(apiFunc, newApiQry));
+  //     },
+  //     function(error) {
+  //       //reject
+  //     });
+  //   }
+  // });
+}
