@@ -603,7 +603,7 @@ exports.score = function(deferred, qry) {
   }
   if (validateErrs.length > 0) {
     deferred.reject({
-      msg:'Score could not be computed',
+      msg: 'Score could not be computed',
       errors: validateErrs
     });
     return;
