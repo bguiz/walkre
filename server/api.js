@@ -36,6 +36,16 @@ exports.noSuchApi = function(deferred, apiCall) {
   });
 };
 
+exports.add = function(deferred, qry) {
+  var result = qry.a + qry.b;
+  deferred.resolve(result);
+};
+
+exports.multiply = function(deferred, qry) {
+  var result = qry.a * qry.b;
+  deferred.resolve(result);
+};
+
 var nominatimDefaults = npmPackage.config.defaults.nominatim;
 var googlemapsDefaults = npmPackage.config.defaults.googlemaps;
 

@@ -110,6 +110,32 @@ exports.sequential = function(deferred, qry, api) {
   sequentialLine(0);
 };
 
+// _.each({a:1, b:2}, function(child, idx) { console.log(child, idx); });
+// _.each([3,4], function(child, idx) { console.log(child, idx); });
+
+var dependentSubstituteRe = /^#{(.*)}$/
+var dependentLineResults = function(qry, obj, dependsResults) {
+  if (_.isArray(obj) || _.isObject(obj)) {
+    _.each(obj, function(child, idx) {
+      if (_.isString(child)) {
+        var found = child.match(dependentSubstituteRe);
+        if (found && found.length > 1) {
+          var key = found[1]; //first regex match is always the entire string
+          if (key && key.length > 0) {
+            var dependResult = dependsResults[key];
+            if (dependResult && dependResult.value) {
+              obj[idx] = dependResult.value;
+            }
+          }
+        }
+      }
+      else {
+        dependentLineResults(qry, child, dependsResults);
+      }
+    });
+  }
+};
+
 var dependentLine = function(line, apiFunc, linePromisesHash) {
   var lineDeferred = Q.defer();
   var dependsPromises = [];
@@ -129,13 +155,8 @@ var dependentLine = function(line, apiFunc, linePromisesHash) {
         dependsResultsHash[depId] = null;
       }
     });
-    var lineQryWithDepends = {};
-    _.extend(
-      lineQryWithDepends,
-      line.qry,
-      {dependsResults: dependsResultsHash}
-    );
-    apiFunc(lineDeferred, lineQryWithDepends);
+    dependentLineResults(line.qry, line.qry, dependsResultsHash);
+    apiFunc(lineDeferred, line.qry);
   });
   return lineDeferred.promise;
 };
