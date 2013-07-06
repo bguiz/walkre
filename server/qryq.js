@@ -67,52 +67,6 @@ exports.parallel = function(deferred, qry, api) {
   });
 };
 
-exports.sequential = function(deferred, qry, api) {
-  var validateErrs = validateQueue(qry);
-  if (validateErrs.length > 0) {
-    deferred.reject({
-      msg: 'Invalid qryq sequential query',
-      errors: validateErrs
-    });
-    return;
-  }
-  var numApiCalls = qry.length;
-  var out = [];
-  function sequentialLine(idx) {
-    var line = qry[idx];
-    var apiQry = line.qry;
-    var apiName = line.api;
-    var apiFunc = api[apiName];
-    if (!apiFunc) {
-      apiFunc = api.noSuchApi;
-      apiQry = apiName;
-    }
-    var promise = async(apiFunc, apiQry);
-    promise.then(
-      function(result) {
-        out.push(result);
-        if (idx < numApiCalls - 1) {
-          sequentialLine(idx + 1);
-        }
-        else {
-          deferred.resolve(out);
-        }
-      },
-      function(err) {
-        deferred.reject({
-          error: 'Cannot process query '+apiQry.id,
-          detail: err,
-          incompleteResults: out
-        });
-      }
-    );
-  }
-  sequentialLine(0);
-};
-
-// _.each({a:1, b:2}, function(child, idx) { console.log(child, idx); });
-// _.each([3,4], function(child, idx) { console.log(child, idx); });
-
 var dependentSubstituteRe = /^#{(.*)}$/
 var dependentLineResults = function(qry, obj, dependsResults) {
   if (_.isArray(obj) || _.isObject(obj)) {
@@ -134,6 +88,50 @@ var dependentLineResults = function(qry, obj, dependsResults) {
       }
     });
   }
+};
+
+var sequentialLine = function(deferred, qry, api, idx) {
+  var line = qry[idx];
+  var apiQry = line.qry;
+  var apiName = line.api;
+  var apiFunc = api[apiName];
+  if (!apiFunc) {
+    apiFunc = api.noSuchApi;
+    apiQry = apiName;
+  }
+  var promise = async(apiFunc, apiQry);
+  promise.then(
+    function(result) {
+      out.push(result);
+      if (idx < numApiCalls - 1) {
+        sequentialLine(deferred, qry, api, idx + 1);
+      }
+      else {
+        deferred.resolve(out);
+      }
+    },
+    function(err) {
+      deferred.reject({
+        error: 'Cannot process query '+apiQry.id,
+        detail: err,
+        incompleteResults: out
+      });
+    }
+  );
+};
+
+exports.sequential = function(deferred, qry, api) {
+  var validateErrs = validateQueue(qry);
+  if (validateErrs.length > 0) {
+    deferred.reject({
+      msg: 'Invalid qryq sequential query',
+      errors: validateErrs
+    });
+    return;
+  }
+  var numApiCalls = qry.length;
+  var out = [];
+  sequentialLine(0);
 };
 
 var dependentLine = function(line, apiFunc, linePromisesHash) {
