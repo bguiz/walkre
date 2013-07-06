@@ -117,11 +117,24 @@ curl -i -X POST \
   
 curl -i -X POST \
   -d '[
-        {"id":"q1","depends":[],"api":"geoLookup","qry":{"q":"123 abc"}},
-        {"id":"q2","depends":["q1"],"api":"geoReverse","qry":{"lat":123.456,"lon":987.543}},
-        {"id":"q3","depends":["q2","q1"],"api":"doesntExist","qry":"doesnt matter"}
+        {"id":"q1","depends":[],"api":"add","qry":{"a":1,"b":9}},
+        {"id":"q2","depends":[],"api":"add","qry":{"a":99,"b":1}}
       ]' \
   http://localhost:9876/api/v1/dep
+  
+curl -i -X POST \
+  -d '[
+        {"id":"q1","depends":[],"api":"add","qry":{"a":1,"b":9}},
+        {"id":"q2","depends":[],"api":"add","qry":{"a":99,"b":1}},
+        {"id":"q3","depends":["q2","q1"],"api":"multiply","qry":{"a":"#{q1}","b":"#{q2}"}},
+        {"id":"q3","depends":["q3"],"api":"multiply","qry":{"a":"#{q3}","b":5}}
+      ]' \
+  http://localhost:9876/api/v1/dep
+
+  '[
+        {"id":"q1","depends":[],"api":"add","qry":{"a":1,"b":9}},
+        {"id":"q2","depends":[],"api":"add","qry":{"a":99,"b":1}}
+      ]'
 */
 server.post('/api/v1/par', [middleware.readRequestDataAsString, middleware.acceptOnlyJson], function(req, resp) {
   var deferred = Q.defer();
