@@ -482,22 +482,30 @@ var parseDurationString = function(inp, delim) {
   return hash;
 };
 
-exports.scoreOne = function(deferred, qry) {
-  //determine which API to call
-  var apiName = 'directions'; //gmaps
+var validateScoreOne = function(qry) {
+  var errs = [];
   if (!qry.mode.max || !(qry.mode.max.time || qry.mode.max.distance)) {
-    deferred.reject('Mode must specify either a max time or distance');
-    return;
+    errs.push('Mode must specify either a max time or distance');
   }
   if (qry.mode.form === 'transit') {
     if (!qry.mode.max.time) {
-      deferred.reject('If mode form is transit, mode max can only specify time');
-      return;
-    }
-    if (qry.journeyPlanner === 'melbtrans') {
-      apiName = 'melbtrans';
+      errs.push('If mode form is transit, mode max can only specify time');
     }
   }
+  return errs;
+};
+
+exports.scoreOne = function(deferred, qry) {
+  var errs = validateScoreOne(qry);
+  if (errs.length > 0) {
+    deferred.reject({
+      msg: 'Failed to score one',
+      errs: errs
+    });
+    return;
+  }
+  //determine which API to call
+  var apiName = (qry.journeyPlanner === 'melbtrans') ? 'melbtrans' : 'directions'; //gmaps
   var transportDeferred = Q.defer();
   var apiFunc = exports[apiName];
   var transportQry;
@@ -552,8 +560,8 @@ exports.scoreOne = function(deferred, qry) {
 // validateErrs.push('');
 // validateErrs.push('Destination #'+idx+' should ');
 // validateErrs.push('mode #'+modeIdx+' destination #'+idx+' should ');
-exports.score = function(deferred, qry) {
-  var validateErrs = [];
+var validateScore = function(qry) {
+  var errs = [];
   if (!_.isObject(qry)) {
     validateErrs.push('Query must be an object');
   }
@@ -623,6 +631,11 @@ exports.score = function(deferred, qry) {
       });
     }
   }
+  return errs;
+};
+
+exports.score = function(deferred, qry) {
+  var validateErrs = validateScore(qry);
   if (validateErrs.length > 0) {
     deferred.reject({
       msg: 'Score could not be computed',
