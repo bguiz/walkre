@@ -135,6 +135,11 @@ curl -i -X POST \
         {"id":"q1","depends":[],"api":"add","qry":{"a":1,"b":9}},
         {"id":"q2","depends":[],"api":"add","qry":{"a":99,"b":1}}
       ]'
+
+  '[
+        {"id":"q1","depends":[],"api":"test","qry":{}},
+        {"id":"q2","depends":["q1"],"api":"add","qry":{"a":"#{q1}.obj.key","b":"#{q1}.arr.4"}}
+      ]'
 */
 server.post('/api/v1/par', [middleware.readRequestDataAsString, middleware.acceptOnlyJson], function(req, resp) {
   var deferred = Q.defer();
@@ -145,6 +150,20 @@ server.post('/api/v1/par', [middleware.readRequestDataAsString, middleware.accep
     resp.send(500, JSON.stringify({reason: reason}));
   });
 });
+
+/*
+e.g.
+
+curl -i -X POST \
+  -d '[
+        {"id":"q1","depends":[],"api":"add","qry":{"a":1,"b":9}},
+        {"id":"q2","depends":[],"api":"add","qry":{"a":"#{q1}","b":1}},
+        {"id":"q3","depends":[],"api":"multiply","qry":{"a":"#{previous}","b":"#{q1}"}},
+    ]' \
+  http://localhost:9876/api/v1/dep
+
+*/
+
 server.post('/api/v1/seq', [middleware.readRequestDataAsString, middleware.acceptOnlyJson], function(req, resp) {
   var deferred = Q.defer();
   qryq.sequential(deferred, req.json, api);
