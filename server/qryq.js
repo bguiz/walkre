@@ -67,8 +67,9 @@ exports.parallel = function(deferred, qry, api) {
   });
 };
 
-var dependentSubstituteRe = /^#{(.*)}$/
-var dependentLineResults = function(qry, obj, dependsResults) {
+//TODO make this a non-greedy regex
+var dependentSubstituteRe = /^#{(.*)}(.*)$/ ;
+var dependentLineResults = function(obj, dependsResults) {
   if (_.isArray(obj) || _.isObject(obj)) {
     _.each(obj, function(child, idx) {
       if (_.isString(child)) {
@@ -77,20 +78,57 @@ var dependentLineResults = function(qry, obj, dependsResults) {
           var key = found[1]; //first regex match is always the entire string
           if (key && key.length > 0) {
             var dependResult = dependsResults[key];
-            if (dependResult && dependResult.value) {
-              obj[idx] = dependResult.value;
+            if (!dependResult && key === 'previous') {
+              dependResult = dependsResults[dependsResults.length];
+            }
+            var subKeys = [];
+            if (found.length > 1) {
+              var subKey = found[2];
+              subKeys = subKey.split('.');
+            }
+            var numSubKeys = subKeys.length;
+            if (numSubKeys < 1) {
+              if (dependResult && dependResult.value) {
+                obj[idx] = dependResult.value;
+              }
+            }
+            else {
+              if (dependResult) {
+                var dependSubResult = dependResult.value;
+                _.each(subKeys, function(subKey, subKeyIdx) {
+                  if (subKeyIdx > 0) {
+                    //skip the first one
+                    var useSubKey = parseInt(subKey, 10);
+                    if (_.isNaN(useSubKey)) {
+                      useSubKey = subKey;
+                    }
+                    dependSubResult = dependSubResult[useSubKey];
+                    if (dependSubResult) {
+                      if (subKeyIdx === (numSubKeys - 1)) {
+                        obj[idx] = dependSubResult;
+                        return;
+                      }
+                    }
+                    else {
+                      //leave as unsubstituted, and shortcut to safety
+                      //obj[idx] = null;
+                      return;
+                    }
+                  }
+                });
+              }
             }
           }
         }
       }
       else {
-        dependentLineResults(qry, child, dependsResults);
+        dependentLineResults(child, dependsResults);
       }
     });
   }
 };
 
-var sequentialLine = function(deferred, qry, api, idx) {
+var sequentialLine = function(deferred, qry, api, idx, out, dependsResults) {
   var line = qry[idx];
   var apiQry = line.qry;
   var apiName = line.api;
@@ -102,9 +140,15 @@ var sequentialLine = function(deferred, qry, api, idx) {
   var promise = async(apiFunc, apiQry);
   promise.then(
     function(result) {
-      out.push(result);
+      var decoratedResult = {
+        status: 'fulfilled',
+        value: result
+      };
+      out.push(decoratedResult);
+      dependsResults[line.id] = decoratedResult;
       if (idx < numApiCalls - 1) {
-        sequentialLine(deferred, qry, api, idx + 1);
+        dependentLineResults(line.qry, dependsResultsHash);
+        sequentialLine(deferred, qry, api, idx + 1, out, dependsResults);
       }
       else {
         deferred.resolve(out);
@@ -130,8 +174,10 @@ exports.sequential = function(deferred, qry, api) {
     return;
   }
   var numApiCalls = qry.length;
+  //TODO find a more efficient way than to keep two parallel data structures
   var out = [];
-  sequentialLine(0);
+  var dependsResults = {};
+  sequentialLine(deferred, qry, api, 0, out, dependsResults);
 };
 
 var dependentLine = function(line, apiFunc, linePromisesHash) {
@@ -153,7 +199,7 @@ var dependentLine = function(line, apiFunc, linePromisesHash) {
         dependsResultsHash[depId] = null;
       }
     });
-    dependentLineResults(line.qry, line.qry, dependsResultsHash);
+    dependentLineResults(line.qry, dependsResultsHash);
     apiFunc(lineDeferred, line.qry);
   });
   return lineDeferred.promise;
