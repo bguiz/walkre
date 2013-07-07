@@ -46,6 +46,18 @@ exports.multiply = function(deferred, qry) {
   deferred.resolve(result);
 };
 
+exports.test = function(deferred, qry) {
+  var result = {
+    obj: {
+      key: 325
+    },
+    arr: [
+      1, 1, 2, 3, 5, 8
+    ]
+  };
+  deferred.resolve(result);
+}
+
 var nominatimDefaults = npmPackage.config.defaults.nominatim;
 var googlemapsDefaults = npmPackage.config.defaults.googlemaps;
 
