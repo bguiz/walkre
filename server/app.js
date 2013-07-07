@@ -8,6 +8,7 @@ var Q = require('q');
 var staticPages = require('./staticPages').staticPages;
 var middleware = require('./middleware');
 var api = require('./api');
+var qryq = require('./qryq');
 var locations = require('./locations');
 var npmPackage = require('../package.json');
 
@@ -66,7 +67,7 @@ curl -i -X POST \
 
 */
 server.post('/api/v1', [middleware.readRequestDataAsString, middleware.acceptOnlyJson], function(req, resp) {
-  if (Object.prototype.toString.call(req.json) !== '[object Array]') {
+  if (!_.isArray(req.json)) {
     resp.contentType('application/json');
     resp.send(406, JSON.stringify({
       error: 'Expected an array of api calls'
@@ -93,6 +94,92 @@ server.post('/api/v1', [middleware.readRequestDataAsString, middleware.acceptOnl
   Q.all(apiPromises).then(function(apiResults) {
     out.response = apiResults;
     resp.send(200, JSON.stringify(out));
+  });
+});
+
+/*
+e.g.
+curl -i -X POST \
+  -d '[
+        {"id":"q1","api":"geoLookup","qry":{"q":"123 abc"}},
+        {"id":"q2","api":"geoReverse","qry":{"lat":123.456,"lon":987.543}},
+        {"id":"q3","api":"doesntExist","qry":"doesnt matter"}
+      ]' \
+  http://localhost:9876/api/v1/par
+  
+curl -i -X POST \
+  -d '[
+        {"id":"q1","api":"geoLookup","qry":{"q":"123 abc"}},
+        {"id":"q2","api":"geoReverse","qry":{"lat":123.456,"lon":987.543}},
+        {"id":"q3","api":"doesntExist","qry":"doesnt matter"}
+      ]' \
+  http://localhost:9876/api/v1/seq
+  
+curl -i -X POST \
+  -d '[
+        {"id":"q1","depends":[],"api":"add","qry":{"a":1,"b":9}},
+        {"id":"q2","depends":[],"api":"add","qry":{"a":99,"b":1}}
+      ]' \
+  http://localhost:9876/api/v1/dep
+  
+curl -i -X POST \
+  -d '[
+        {"id":"q1","depends":[],"api":"add","qry":{"a":1,"b":9}},
+        {"id":"q2","depends":[],"api":"add","qry":{"a":99,"b":1}},
+        {"id":"q3","depends":["q2","q1"],"api":"multiply","qry":{"a":"#{q1}","b":"#{q2}"}},
+        {"id":"q3","depends":["q3"],"api":"multiply","qry":{"a":"#{q3}","b":5}}
+      ]' \
+  http://localhost:9876/api/v1/dep
+
+  '[
+        {"id":"q1","depends":[],"api":"add","qry":{"a":1,"b":9}},
+        {"id":"q2","depends":[],"api":"add","qry":{"a":99,"b":1}}
+      ]'
+
+  '[
+        {"id":"q1","depends":[],"api":"test","qry":{}},
+        {"id":"q2","depends":["q1"],"api":"add","qry":{"a":"#{q1}.obj.key","b":"#{q1}.arr.4"}}
+      ]'
+*/
+server.post('/api/v1/par', [middleware.readRequestDataAsString, middleware.acceptOnlyJson], function(req, resp) {
+  var deferred = Q.defer();
+  qryq.parallel(deferred, req.json, api);
+  deferred.promise.then(function(result) {
+    resp.send(200, JSON.stringify(result));
+  }, function(reason) {
+    resp.send(500, JSON.stringify({reason: reason}));
+  });
+});
+
+/*
+e.g.
+
+curl -i -X POST \
+  -d '[
+        {"id":"q1","depends":[],"api":"add","qry":{"a":1,"b":9}},
+        {"id":"q2","depends":[],"api":"add","qry":{"a":"#{q1}","b":1}},
+        {"id":"q3","depends":[],"api":"multiply","qry":{"a":"#{previous}","b":"#{q1}"}},
+    ]' \
+  http://localhost:9876/api/v1/dep
+
+*/
+
+server.post('/api/v1/seq', [middleware.readRequestDataAsString, middleware.acceptOnlyJson], function(req, resp) {
+  var deferred = Q.defer();
+  qryq.sequential(deferred, req.json, api);
+  deferred.promise.then(function(result) {
+    resp.send(200, JSON.stringify(result));
+  }, function(reason) {
+    resp.send(500, JSON.stringify({reason: reason}));
+  });
+});
+server.post('/api/v1/dep', [middleware.readRequestDataAsString, middleware.acceptOnlyJson], function(req, resp) {
+  var deferred = Q.defer();
+  qryq.dependent(deferred, req.json, api);
+  deferred.promise.then(function(result) {
+    resp.send(200, JSON.stringify(result));
+  }, function(reason) {
+    resp.send(500, JSON.stringify({reason: reason}));
   });
 });
 

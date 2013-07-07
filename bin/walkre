@@ -1,4 +1,9 @@
 #!/bin/bash
 #starts the server
 
-node server/app.js
+#node server/app.js
+
+node --debug server/app.js &
+#TODO tail output to listen for "listening on port" line instead of using sleep
+sleep 3s 
+node-inspector --web-port=5959 &

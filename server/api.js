@@ -36,6 +36,28 @@ exports.noSuchApi = function(deferred, apiCall) {
   });
 };
 
+exports.add = function(deferred, qry) {
+  var result = qry.a + qry.b;
+  deferred.resolve(result);
+};
+
+exports.multiply = function(deferred, qry) {
+  var result = qry.a * qry.b;
+  deferred.resolve(result);
+};
+
+exports.test = function(deferred, qry) {
+  var result = {
+    obj: {
+      key: 325
+    },
+    arr: [
+      1, 1, 2, 3, 5, 8
+    ]
+  };
+  deferred.resolve(result);
+}
+
 var nominatimDefaults = npmPackage.config.defaults.nominatim;
 var googlemapsDefaults = npmPackage.config.defaults.googlemaps;
 
@@ -603,7 +625,7 @@ exports.score = function(deferred, qry) {
   }
   if (validateErrs.length > 0) {
     deferred.reject({
-      msg:'Score could not be computed',
+      msg: 'Score could not be computed',
       errors: validateErrs
     });
     return;
