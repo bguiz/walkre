@@ -531,9 +531,21 @@ exports.scoreOne = function(deferred, qry) {
   });
 };
 
-// validateErrs.push('');
-// validateErrs.push('Destination #'+idx+' should ');
-// validateErrs.push('mode #'+modeIdx+' destination #'+idx+' should ');
+
+/* {
+  "origin":{address":"36 Meadow Wood Walk, Narre Warren VIC 3805"},
+  "journeyPlanner":"melbtrans",
+  "destinations":[
+    {
+      "fixed":true,"class":"work","weight":0.8,"location":{"address":"19 Bourke Street, Melbourne, VIC 3000"},
+      "modes":[{"form":"transit","max":{"time":2400}}]
+    },
+    {
+      "class":"supermarkets","weight":0.2,
+      "modes":[{"form":"walking","weight":0.75,"max":{"distance":1000}},{"form":"driving","weight":0.25,"max":{"time":300}}]
+    }
+  ]
+} */
 var validateScore = function(qry) {
   var errs = [];
   if (!_.isObject(qry)) {
@@ -629,7 +641,8 @@ exports.score = function(deferred, qry) {
   var geoResultPromises = [];
   if (needGeo) {
     //get geolocations for all locations present
-    if (!qry.origin.lat || !qry.origin.lon) {
+    if (! (qry.origin.hasOwnProperty('lat') && 
+          qry.origin.hasOwnProperty('lon'))) {
       var geoDeferred = Q.defer();
       geoPromises.push(geoDeferred.promise);
       var geoResultDeferred = Q.defer();
@@ -643,50 +656,24 @@ exports.score = function(deferred, qry) {
       });
     }
     _.each(qry.destinations, function(destination, idx) {
-      var geoDeferred = Q.defer();
-      geoPromises.push(geoDeferred.promise);
-      var geoResultDeferred = Q.defer();
-      geoResultPromises.push(geoResultDeferred.promise);
-      exports.gmapsGeoLookup(destGeoDeferred, destination.location);
-      geoDeferred.promise.then(function(result) {
-        var val = result.value;
-        var dest = qry.destinations[idx];
-        dest.location.lat = val.lat;
-        dest.location.lon = val.lon;
-        geoResultDeferred.resolve(dest);
-      });
+      if (! (destination.hasOwnProperty('lat') &&
+            destination.hasOwnProperty('lon'))) {
+        var geoDeferred = Q.defer();
+        geoPromises.push(geoDeferred.promise);
+        var geoResultDeferred = Q.defer();
+        geoResultPromises.push(geoResultDeferred.promise);
+        exports.gmapsGeoLookup(destGeoDeferred, destination.location);
+        geoDeferred.promise.then(function(result) {
+          var val = result.value;
+          var dest = qry.destinations[idx];
+          dest.location.lat = val.lat;
+          dest.location.lon = val.lon;
+          geoResultDeferred.resolve(dest);
+        });
+      }
     }, this);
   }
-
-  // var originPromisesDeferred = Q.defer();
-  // Q.allSettled(originPromises).then(function(results) {
-  //   _.each(results, function(result) {
-  //     if (result.state === 'fulfilled') {
-  //       var val = result.value;
-  //       qry.origin.lat = val.lat;
-  //       qry.origin.lon = val.lon;
-  //     }
-  //     else {
-  //       console.log('originPromises allSettled:', result.error);
-  //     }
-  //   }, this);
-  //   originPromisesDeferred.resolve(qry.origin);
-  // });
-  // var destinationsPromisesDeferred = Q.defer();
-  // Q.allSettled(destinationPromises).then(function(results) {
-  //   _.each(results, function(result, idx) {
-  //     if (result.state === 'fulfilled') {
-  //       var val = result.value;
-  //       qry.destinations[idx].location.lat = val.lat;
-  //       qry.destinations[idx].location.lon = val.lon;
-  //     }
-  //     else {
-  //       console.log('destinationPromises allSettled:', result.error);
-  //     }
-  //   }, this);
-  //   destinationsPromisesDeferred.resolve(qry.destinations);
-  // });
-
+  
   var scorePromises = [];
   Q.allSettled(geoResultPromises).then(function(results) {
     //we don't care about the results returned, because they were modified in place in the qry object
@@ -779,21 +766,6 @@ exports.score = function(deferred, qry) {
     deferred.resolve(out);
   });
 };
-
-/* {
-  "origin":{address":"36 Meadow Wood Walk, Narre Warren VIC 3805"},
-  "journeyPlanner":"melbtrans",
-  "destinations":[
-    {
-      "fixed":true,"class":"work","weight":0.8,"location":{"address":"19 Bourke Street, Melbourne, VIC 3000"},
-      "modes":[{"form":"transit","max":{"time":2400}}]
-    },
-    {
-      "class":"supermarkets","weight":0.2,
-      "modes":[{"form":"walking","weight":0.75,"max":{"distance":1000}},{"form":"driving","weight":0.25,"max":{"time":300}}]
-    }
-  ]
-} */
 
 exports.testDagQueue = function(deferred, qry) {
     var batch = [
