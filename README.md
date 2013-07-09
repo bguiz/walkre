@@ -9,3 +9,18 @@ These APIs are presently probably not of much interest, as `qryq`, the spin-off 
 - [Introducing qryq](http://bguiz.com/post/54620002947/qryq)
 - [qryq on github](https://github.com/bguiz/qryq "github.com/bguiz/qryq")
 - [qryq presentation](https://github.com/bguiz/qryq/blob/master/doco/present/markdown/present.md)
+
+## TODO
+
+### Features
+
+- [X] Geo location APIs
+- [X] Public transport APIs
+- [ ] Scoring APIs
+- [ ] Nearest of category APIs
+
+### Devops
+
+- [ ] Document API properly
+- [ ] Extract `qryq` and use purely as a dependency
+- [ ] Unit tests for API functions
