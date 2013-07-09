@@ -304,5 +304,66 @@ server.post('/api/v1/score', [middleware.readRequestDataAsString, middleware.acc
   });
 });
 
+var apiPrefix = '/api/v1';
+var qryqPrefix = qryqPrefix + '/qryq';
+var restPrefix = apiPrefix + '/rest';
+var restPrefixEntity = restPrefix + '/:entity';
+var restPrefixSingle = restPrefixEntity + '/:id';
+
+function crudApiName(verb, noun) {
+  return verb.toLowerCase() + noun.charAt(0).toUpperCase + ((noun.length > 1) ? noun.slice(1) : '');
+}
+
+function callApi(apiName, req, resp) {
+  var qry = {
+    id: req.params.id,
+    params: req.params,
+    query: req.query,
+    body: req.body
+  };
+  var apiFunc = api[apiName];
+  if (! apiFunc) {
+    apiFunc = api.noSuchApi;
+    qry = apiName;
+  }
+  var deferred = Q.defer();
+  apiFunc(deferred, req.json);
+  deferred.promise.then(function(result) {
+    resp.send(200, JSON.stringify(result));
+  }, function(reason) {
+    resp.send(500, JSON.stringify({reason: reason}));
+  });
+}
+
+//create 1
+server.put(restPrefixSingle, function(req, resp) {
+  var apiName = restApiName('CREATE', req.params.entity);
+  callApi(apiName, req, resp);
+});
+
+//read 1
+server.get(restPrefixSingle, function(req, resp) {
+  var apiName = restApiName('READ', req.params.entity);
+  callApi(apiName, req, resp);
+});
+
+//read *
+server.get(restPrefixEntity, function(req, resp) {
+  var apiName = restApiName('READALL', req.params.entity);
+  callApi(apiName, req, resp);
+});
+
+//update 1
+server.post(restPrefixSingle, function(req, resp) {
+  var apiName = restApiName('UPDATE', req.params.entity);
+  callApi(apiName, req, resp);
+});
+
+//delete 1
+server.delete(restPrefixSingle, function(req, resp) {
+  var apiName = restApiName('DELETE', req.params.entity);
+  callApi(apiName, req, resp);
+});
+
 server.listen(portNumber);
 console.log(npmPackage.name, 'v'+npmPackage.version, 'listening on port', portNumber);
