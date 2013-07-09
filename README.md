@@ -14,8 +14,8 @@ These APIs are presently probably not of much interest, as `qryq`, the spin-off 
 
 ### Features
 
-- [X] Geo location APIs
-- [X] Public transport APIs
+- [x] Geo location APIs
+- [x] Public transport APIs
 - [ ] Scoring APIs
 - [ ] Nearest of category APIs
 
