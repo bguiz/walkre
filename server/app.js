@@ -173,12 +173,13 @@ curl -i -X POST \
             "journeyPlanner":"melbtrans",
             "destinations":[
               {
-                "fixed":true,"class":"work","weight":0.8,"location":{"address":"19 Bourke Street, Melbourne, VIC 3000","lat":"#{qGeocodeDestination}.lat","lon":"#{qGeocodeDestination}.lon"},
+                "fixed":true,"class":"work","weight":0.8,
+                "location":{"address":"19 Bourke Street, Melbourne, VIC 3000","lat":"#{qGeocodeDestination}.lat","lon":"#{qGeocodeDestination}.lon"},
                 "modes":[{"form":"transit","max":{"time":2400}}]
               }
             ]
           }
-        },
+        }
     ]' \
   http://localhost:9876/api/v1/dep
 

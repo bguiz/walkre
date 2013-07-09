@@ -547,7 +547,7 @@ exports.scoreOne = function(deferred, qry) {
   ]
 } */
 var validateScore = function(qry) {
-  var errs = [];
+  var validateErrs = [];
   if (!_.isObject(qry)) {
     validateErrs.push('Query must be an object');
   }
@@ -560,10 +560,10 @@ var validateScore = function(qry) {
         validateErrs.push('Query must contain an origin with an address');
       }
       if (!(qry.origin.lat && _.isNumber(qry.origin.lat))) {
-        validateErrs.push('Query must contain an origin with a lat');
+        validateErrs.push('Query must contain an origin with a numeric lat');
       }
       if (!(qry.origin.lon && _.isNumber(qry.origin.lon))) {
-        validateErrs.push('Query must contain an origin with a lon');
+        validateErrs.push('Query must contain an origin with a numeric lon');
       }
     }
     if (!(qry.destinations && _.isArray(qry.destinations) && qry.destinations.length > 0)) {
@@ -579,14 +579,19 @@ var validateScore = function(qry) {
           if (numDestinations > 1 && !(dest.weight && _.isNumber(dest.weight))) {
             validateErrs.push('Destination #'+idx+' should specify a numeric weight as there are more than 1');
           }
-          if (!(dest.location && dest.location.address && _.isString(dest.location.address))) {
-            validateErrs.push('Destination #'+idx+' should specify an address');
+          if (!dest.location) {
+            validateErrs.push('Destination #'+idx+' should specify a location');
           }
-          if (!(dest.location && dest.location.lat && _.isString(dest.location.lat))) {
-            validateErrs.push('Destination #'+idx+' should specify a lat');
-          }
-          if (!(dest.location && dest.location.lon && _.isString(dest.location.lon))) {
-            validateErrs.push('Destination #'+idx+' should specify a lon');
+          else {
+            if (!(dest.location.address && _.isString(dest.location.address))) {
+              validateErrs.push('Destination #'+idx+' should specify an address');
+            }
+            if (!(dest.location.lat && _.isNumber(dest.location.lat))) {
+              validateErrs.push('Destination #'+idx+' should specify a numeric lat');
+            }
+            if (!(dest.location.lon && _.isNumber(dest.location.lon))) {
+              validateErrs.push('Destination #'+idx+' should specify a numeric lon');
+            }
           }
           if (!(dest.modes && _.isArray(dest.modes) && dest.modes.length > 0)) {
             validateErrs.push('Destination #'+idx+' should specify at least one mode');
@@ -629,12 +634,12 @@ var validateScore = function(qry) {
       });
     }
   }
-  return errs;
+  return validateErrs;
 };
 
 exports.score = function(deferred, qry) {
   var validateErrs = validateScore(qry);
-  if (validateErrs.length > 0) {
+  if (!validateErrs || validateErrs.length > 0) {
     deferred.reject({
       msg: 'Score could not be computed',
       errors: validateErrs
@@ -644,30 +649,24 @@ exports.score = function(deferred, qry) {
   qry.journeyPlanner = qry.journeyPlanner || 'gmaps';
 
   var scorePromises = [];
-  Q.allSettled(geoResultPromises).then(function(results) {
-    //we don't care about the results returned, because they were modified in place in the qry object
-    //more importantly, we are now assured that all addresses have a lat and lon, if needGeo is true
-    //TODO instead validate each of the locations
-
-    //get the transport information from the origin to each destination using each transport mode
-    var origin = qry.origin;
-    _.each(qry.destinations, function(destination) {
-      //TODO check that weights add up for destinations
-      _.each(destination.modes, function(mode) {
-        //we have origin, destination, and mode
-        //TODO check that weights add up for modes
-        //now work out the transport information between this origin and this destination using this mode
-        var scoreDeferred = Q.defer();
-        scorePromises.push(scoreDeferred.promise);
-        exports.scoreOne(scoreDeferred, {
-          origin: origin,
-          destination: destination.location,
-          mode: mode,
-          journeyPlanner: qry.journeyPlanner
-        });
+  //get the transport information from the origin to each destination using each transport mode
+  var origin = qry.origin;
+  _.each(qry.destinations, function(destination) {
+    //TODO check that weights add up for destinations
+    _.each(destination.modes, function(mode) {
+      //we have origin, destination, and mode
+      //TODO check that weights add up for modes
+      //now work out the transport information between this origin and this destination using this mode
+      var scoreDeferred = Q.defer();
+      scorePromises.push(scoreDeferred.promise);
+      exports.scoreOne(scoreDeferred, {
+        origin: origin,
+        destination: destination.location,
+        mode: mode,
+        journeyPlanner: qry.journeyPlanner
       });
-    }, this);
-  });  
+    });
+  });
 
   Q.allSettled(scorePromises).then(function(scoreResults) {
     var orig_dest_mode = {};
