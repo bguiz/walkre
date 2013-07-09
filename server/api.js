@@ -557,7 +557,13 @@ var validateScore = function(qry) {
     }
     else {
       if (!(qry.origin.address && _.isString(qry.origin.address))) {
-        validateErrs.push('Query must contain a location with an address');
+        validateErrs.push('Query must contain an origin with an address');
+      }
+      if (!(qry.origin.lat && _.isNumber(qry.origin.lat))) {
+        validateErrs.push('Query must contain an origin with a lat');
+      }
+      if (!(qry.origin.lon && _.isNumber(qry.origin.lon))) {
+        validateErrs.push('Query must contain an origin with a lon');
       }
     }
     if (!(qry.destinations && _.isArray(qry.destinations) && qry.destinations.length > 0)) {
@@ -575,6 +581,12 @@ var validateScore = function(qry) {
           }
           if (!(dest.location && dest.location.address && _.isString(dest.location.address))) {
             validateErrs.push('Destination #'+idx+' should specify an address');
+          }
+          if (!(dest.location && dest.location.lat && _.isString(dest.location.lat))) {
+            validateErrs.push('Destination #'+idx+' should specify a lat');
+          }
+          if (!(dest.location && dest.location.lon && _.isString(dest.location.lon))) {
+            validateErrs.push('Destination #'+idx+' should specify a lon');
           }
           if (!(dest.modes && _.isArray(dest.modes) && dest.modes.length > 0)) {
             validateErrs.push('Destination #'+idx+' should specify at least one mode');
@@ -630,50 +642,7 @@ exports.score = function(deferred, qry) {
     return;
   }
   qry.journeyPlanner = qry.journeyPlanner || 'gmaps';
-  var needGeo =
-    (qry.journeyPlanner === 'melbtrans')
-    || _.some(qry.destinations, function(destination) {
-      destination.hasOwnProperty('fixed') && (destination.fixed === true);
-    });
-  // var originPromises = [];
-  // var destinationPromises = [];
-  var geoPromises = [];
-  var geoResultPromises = [];
-  if (needGeo) {
-    //get geolocations for all locations present
-    if (! (qry.origin.hasOwnProperty('lat') && 
-          qry.origin.hasOwnProperty('lon'))) {
-      var geoDeferred = Q.defer();
-      geoPromises.push(geoDeferred.promise);
-      var geoResultDeferred = Q.defer();
-      geoResultPromises.push(geoResultDeferred.promise);
-      exports.gmapsGeoLookup(originGeoDeferred, qry.origin);
-      geoDeferred.promise.then(function(result) {
-        var val = result.value;
-        qry.origin.lat = val.lat;
-        qry.origin.lon = val.lon;
-        geoResultDeferred.resolve(qry.origin);
-      });
-    }
-    _.each(qry.destinations, function(destination, idx) {
-      if (! (destination.hasOwnProperty('lat') &&
-            destination.hasOwnProperty('lon'))) {
-        var geoDeferred = Q.defer();
-        geoPromises.push(geoDeferred.promise);
-        var geoResultDeferred = Q.defer();
-        geoResultPromises.push(geoResultDeferred.promise);
-        exports.gmapsGeoLookup(destGeoDeferred, destination.location);
-        geoDeferred.promise.then(function(result) {
-          var val = result.value;
-          var dest = qry.destinations[idx];
-          dest.location.lat = val.lat;
-          dest.location.lon = val.lon;
-          geoResultDeferred.resolve(dest);
-        });
-      }
-    }, this);
-  }
-  
+
   var scorePromises = [];
   Q.allSettled(geoResultPromises).then(function(results) {
     //we don't care about the results returned, because they were modified in place in the qry object

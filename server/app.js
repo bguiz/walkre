@@ -151,19 +151,6 @@ server.post('/api/v1/par', [middleware.readRequestDataAsString, middleware.accep
   });
 });
 
-/*
-e.g.
-
-curl -i -X POST \
-  -d '[
-        {"id":"q1","depends":[],"api":"add","qry":{"a":1,"b":9}},
-        {"id":"q2","depends":[],"api":"add","qry":{"a":"#{q1}","b":1}},
-        {"id":"q3","depends":[],"api":"multiply","qry":{"a":"#{previous}","b":"#{q1}"}},
-    ]' \
-  http://localhost:9876/api/v1/dep
-
-*/
-
 server.post('/api/v1/seq', [middleware.readRequestDataAsString, middleware.acceptOnlyJson], function(req, resp) {
   var deferred = Q.defer();
   qryq.sequential(deferred, req.json, api);
@@ -173,6 +160,30 @@ server.post('/api/v1/seq', [middleware.readRequestDataAsString, middleware.accep
     resp.send(500, JSON.stringify({reason: reason}));
   });
 });
+
+/*
+e.g.
+
+curl -i -X POST \
+  -d '[
+        {"id":"qGeocodeOrigin","depends":[],"api":"gmapsGeoLookup","qry":{"address":"36 Meadow Wood Walk, Narre Warren VIC 3805"}},
+        {"id":"qGeocodeDestination","depends":[],"api":"gmapsGeoLookup","qry":{"address":"19 Bourke Street, Melbourne, VIC 3000"}},
+        {"id":"qScore","depends":["qGeocodeOrigin","qGeocodeDestination"],"api":"score","qry":{
+            "origin":{"address":"36 Meadow Wood Walk, Narre Warren VIC 3805","lat":"#{qGeocodeOrigin}.lat","lon":"#{qGeocodeOrigin}.lon"},
+            "journeyPlanner":"melbtrans",
+            "destinations":[
+              {
+                "fixed":true,"class":"work","weight":0.8,"location":{"address":"19 Bourke Street, Melbourne, VIC 3000","lat":"#{qGeocodeDestination}.lat","lon":"#{qGeocodeDestination}.lon"},
+                "modes":[{"form":"transit","max":{"time":2400}}]
+              }
+            ]
+          }
+        },
+    ]' \
+  http://localhost:9876/api/v1/dep
+
+*/
+
 server.post('/api/v1/dep', [middleware.readRequestDataAsString, middleware.acceptOnlyJson], function(req, resp) {
   var deferred = Q.defer();
   qryq.dependent(deferred, req.json, api);
