@@ -410,32 +410,6 @@ exports.scrapeGeoLookup = function(deferred, qry) {
     console.log('completed scrape');
     deferred.resolve(result);
   });
-
-  // var scrapePromises = [];
-  // for (var idx = 0; idx < numScrapes; ++idx) {
-  //   var scrapeInp = qry[idx];
-  //   scrapePromises.push(exports.randomDelayedAsync(exports.gmapsGeoLookup, scrapeInp, delayTime, delayTime + delayDeviation));
-  //   delayTime += delayInterval;
-  //   if (delayDeviation < maxDelayDeviation) {
-  //     maxDelayDeviation += delayInterval;
-  //   }
-  // }
-  // Q.all(scrapePromises).then(function(scrapeResults) {
-  //   var out = [];
-  //   console.log('scrapeResults=', scrapeResults);
-  //   for (var idx = 0; idx < numScrapes; ++idx) {
-  //     var scrapeResult = scrapeResults[idx];
-  //     var scrapeInp = qry[idx];
-  //     var selectedResult = scrapeResult.results[0];
-  //     var singleResult = scrapeInp; //TODO use a deep clone instead
-  //     singleResult.lat = selectedResult.geometry.location.lat;
-  //     singleResult.lon = selectedResult.geometry.location.lng;
-  //     out.push(singleResult);
-  //   }
-  //   console.log('JSON.stringify(out)=', JSON.stringify(out));
-  //   fs.writeFileSync('./out.str.json', JSON.stringify(out)); //DEBUG only
-  //   deferred.resolve(out);
-  // });
 };
 
 exports.melbtrans = function(deferred, qry) {
@@ -649,53 +623,75 @@ exports.score = function(deferred, qry) {
     || _.some(qry.destinations, function(destination) {
       destination.hasOwnProperty('fixed') && (destination.fixed === true);
     });
-  var originPromises = [];
-  var destinationPromises = [];
+  // var originPromises = [];
+  // var destinationPromises = [];
+  var geoPromises = [];
+  var geoResultPromises = [];
   if (needGeo) {
     //get geolocations for all locations present
     if (!qry.origin.lat || !qry.origin.lon) {
-      var originGeoDeferred = Q.defer();
+      var geoDeferred = Q.defer();
+      geoPromises.push(geoDeferred.promise);
+      var geoResultDeferred = Q.defer();
+      geoResultPromises.push(geoResultDeferred.promise);
       exports.gmapsGeoLookup(originGeoDeferred, qry.origin);
-      originPromises.push(originGeoDeferred.promise);
-    }
-    _.each(qry.destinations, function(destination) {
-      var destGeoDeferred = Q.defer();
-      exports.gmapsGeoLookup(destGeoDeferred, destination.location);
-      destinationPromises.push(destGeoDeferred.promise);
-    }, this);
-  }
-  var originPromisesDeferred = Q.defer();
-  Q.allSettled(originPromises).then(function(results) {
-    _.each(results, function(result) {
-      if (result.state === 'fulfilled') {
+      geoDeferred.promise.then(function(result) {
         var val = result.value;
         qry.origin.lat = val.lat;
         qry.origin.lon = val.lon;
-      }
-      else {
-        console.log('originPromises allSettled:', result.error);
-      }
-    }, this);
-    originPromisesDeferred.resolve(qry.origin);
-  });
-  var destinationsPromisesDeferred = Q.defer();
-  Q.allSettled(destinationPromises).then(function(results) {
-    _.each(results, function(result, idx) {
-      if (result.state === 'fulfilled') {
+        geoResultDeferred.resolve(qry.origin);
+      });
+    }
+    _.each(qry.destinations, function(destination, idx) {
+      var geoDeferred = Q.defer();
+      geoPromises.push(geoDeferred.promise);
+      var geoResultDeferred = Q.defer();
+      geoResultPromises.push(geoResultDeferred.promise);
+      exports.gmapsGeoLookup(destGeoDeferred, destination.location);
+      geoDeferred.promise.then(function(result) {
         var val = result.value;
-        qry.destinations[idx].location.lat = val.lat;
-        qry.destinations[idx].location.lon = val.lon;
-      }
-      else {
-        console.log('destinationPromises allSettled:', result.error);
-      }
+        var dest = qry.destinations[idx];
+        dest.location.lat = val.lat;
+        dest.location.lon = val.lon;
+        geoResultDeferred.resolve(dest);
+      });
     }, this);
-    destinationsPromisesDeferred.resolve(qry.destinations);
-  });
-  Q.allSettled([originPromisesDeferred.promise, destinationsPromisesDeferred.promise]).then(function(results) {
+  }
+
+  // var originPromisesDeferred = Q.defer();
+  // Q.allSettled(originPromises).then(function(results) {
+  //   _.each(results, function(result) {
+  //     if (result.state === 'fulfilled') {
+  //       var val = result.value;
+  //       qry.origin.lat = val.lat;
+  //       qry.origin.lon = val.lon;
+  //     }
+  //     else {
+  //       console.log('originPromises allSettled:', result.error);
+  //     }
+  //   }, this);
+  //   originPromisesDeferred.resolve(qry.origin);
+  // });
+  // var destinationsPromisesDeferred = Q.defer();
+  // Q.allSettled(destinationPromises).then(function(results) {
+  //   _.each(results, function(result, idx) {
+  //     if (result.state === 'fulfilled') {
+  //       var val = result.value;
+  //       qry.destinations[idx].location.lat = val.lat;
+  //       qry.destinations[idx].location.lon = val.lon;
+  //     }
+  //     else {
+  //       console.log('destinationPromises allSettled:', result.error);
+  //     }
+  //   }, this);
+  //   destinationsPromisesDeferred.resolve(qry.destinations);
+  // });
+
+  var scorePromises = [];
+  Q.allSettled(geoResultPromises).then(function(results) {
     //we don't care about the results returned, because they were modified in place in the qry object
     //more importantly, we are now assured that all addresses have a lat and lon, if needGeo is true
-    var scorePromises = [];
+    //TODO instead validate each of the locations
 
     //get the transport information from the origin to each destination using each transport mode
     var origin = qry.origin;
@@ -715,74 +711,73 @@ exports.score = function(deferred, qry) {
         });
       });
     }, this);
+  });  
 
-    Q.allSettled(scorePromises).then(function(scoreResults) {
-      var orig_dest_mode = {};
-      _.each(scoreResults, function(result) {
-        if (result.state === 'fulfilled') {
-          var score = result.value;
-          orig_dest_mode[score.origin.address] = 
-            orig_dest_mode[score.origin.address] || 
-            {};
-          orig_dest_mode[score.origin.address][score.destination.address] = 
-            orig_dest_mode[score.origin.address][score.destination.address] || 
-            {};
-          orig_dest_mode[score.origin.address][score.destination.address][score.mode.form] = 
-            orig_dest_mode[score.origin.address][score.destination.address][score.mode.form] || 
-            {
-              origin: score.origin,
-              destination: score.destination,
-              mode: score.mode,
-              score: score.score
-            };
+  Q.allSettled(scorePromises).then(function(scoreResults) {
+    var orig_dest_mode = {};
+    _.each(scoreResults, function(result) {
+      if (result.state === 'fulfilled') {
+        var score = result.value;
+        orig_dest_mode[score.origin.address] = 
+          orig_dest_mode[score.origin.address] || 
+          {};
+        orig_dest_mode[score.origin.address][score.destination.address] = 
+          orig_dest_mode[score.origin.address][score.destination.address] || 
+          {};
+        orig_dest_mode[score.origin.address][score.destination.address][score.mode.form] = 
+          orig_dest_mode[score.origin.address][score.destination.address][score.mode.form] || 
+          {
+            origin: score.origin,
+            destination: score.destination,
+            mode: score.mode,
+            score: score.score
+          };
+      }
+      else {
+        console.log('scorePromises allSettled:', result.error);
+      }
+    });
+
+    // parse weights to calculate aggregate score, iterate over original qry rather than score results,
+    //in case some results are rejections
+    var origin = qry.origin;
+    var destinationWeightSum = 0;
+    var destinationScoreSum = 0;
+    var calcErrors = [];
+    _.each(qry.destinations, function(destination) {
+      var destinationWeight = destination.weight || 1.0;
+      destinationWeightSum += destinationWeight;
+      var modeWeightSum = 0;
+      var modeScoreSum = 0;
+      _.each(destination.modes, function(mode) {
+        var modeWeight = mode.weight || 1.0;
+        modeWeightSum += modeWeight;
+        var modeScore = 0;
+        if (
+          orig_dest_mode[origin.address] &&
+          orig_dest_mode[origin.address][destination.location.address] &&
+          orig_dest_mode[origin.address][destination.location.address][mode.form]) {
+          modeScore = orig_dest_mode[origin.address][destination.location.address][mode.form].score;
         }
         else {
-          console.log('scorePromises allSettled:', result.error);
+          calcErrors.push('No data available for journey from '+origin.address+
+            ' to '+destination.address+
+            ' by '+mode.form);
         }
+        modeScoreSum += (modeScore * modeWeight);
       });
-
-      // parse weights to calculate aggregate score, iterate over original qry rather than score results,
-      //in case some results are rejections
-      var origin = qry.origin;
-      var destinationWeightSum = 0;
-      var destinationScoreSum = 0;
-      var calcErrors = [];
-      _.each(qry.destinations, function(destination) {
-        var destinationWeight = destination.weight || 1.0;
-        destinationWeightSum += destinationWeight;
-        var modeWeightSum = 0;
-        var modeScoreSum = 0;
-        _.each(destination.modes, function(mode) {
-          var modeWeight = mode.weight || 1.0;
-          modeWeightSum += modeWeight;
-          var modeScore = 0;
-          if (
-            orig_dest_mode[origin.address] &&
-            orig_dest_mode[origin.address][destination.location.address] &&
-            orig_dest_mode[origin.address][destination.location.address][mode.form]) {
-            modeScore = orig_dest_mode[origin.address][destination.location.address][mode.form].score;
-          }
-          else {
-            calcErrors.push('No data available for journey from '+origin.address+
-              ' to '+destination.address+
-              ' by '+mode.form);
-          }
-          modeScoreSum += (modeScore * modeWeight);
-        });
-        destinationScoreSum += (modeScoreSum / modeWeightSum * destinationWeight);
-      });
-      destinationScoreSum = destinationScoreSum / destinationWeightSum;
-      //divide by weight sums to scale to 0 to 1 range
-
-      var out = {
-        score: (destinationScoreSum * 0.5),
-        errors: calcErrors,
-        raw: scoreResults
-      };
-      deferred.resolve(out);
+      destinationScoreSum += (modeScoreSum / modeWeightSum * destinationWeight);
     });
+    destinationScoreSum = destinationScoreSum / destinationWeightSum;
+    //divide by weight sums to scale to 0 to 1 range
+
+    var out = {
+      score: (destinationScoreSum * 0.5),
+      errors: calcErrors,
+      raw: scoreResults
+    };
+    deferred.resolve(out);
   });
-  // setTimeout(function() {deferred.resolve({echo:qry})}, 1000); //DEBUG output
 };
 
 /* {
