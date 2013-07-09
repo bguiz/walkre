@@ -135,6 +135,11 @@ curl -i -X POST \
         {"id":"q1","depends":[],"api":"add","qry":{"a":1,"b":9}},
         {"id":"q2","depends":[],"api":"add","qry":{"a":99,"b":1}}
       ]'
+
+  '[
+        {"id":"q1","depends":[],"api":"test","qry":{}},
+        {"id":"q2","depends":["q1"],"api":"add","qry":{"a":"#{q1}.obj.key","b":"#{q1}.arr.4"}}
+      ]'
 */
 server.post('/api/v1/par', [middleware.readRequestDataAsString, middleware.acceptOnlyJson], function(req, resp) {
   var deferred = Q.defer();
@@ -145,6 +150,7 @@ server.post('/api/v1/par', [middleware.readRequestDataAsString, middleware.accep
     resp.send(500, JSON.stringify({reason: reason}));
   });
 });
+
 server.post('/api/v1/seq', [middleware.readRequestDataAsString, middleware.acceptOnlyJson], function(req, resp) {
   var deferred = Q.defer();
   qryq.sequential(deferred, req.json, api);
@@ -154,6 +160,31 @@ server.post('/api/v1/seq', [middleware.readRequestDataAsString, middleware.accep
     resp.send(500, JSON.stringify({reason: reason}));
   });
 });
+
+/*
+e.g.
+
+curl -i -X POST \
+  -d '[
+        {"id":"qGeocodeOrigin","depends":[],"api":"gmapsGeoLookup","qry":{"address":"36 Meadow Wood Walk, Narre Warren VIC 3805"}},
+        {"id":"qGeocodeDestination","depends":[],"api":"gmapsGeoLookup","qry":{"address":"19 Bourke Street, Melbourne, VIC 3000"}},
+        {"id":"qScore","depends":["qGeocodeOrigin","qGeocodeDestination"],"api":"score","qry":{
+            "origin":{"address":"36 Meadow Wood Walk, Narre Warren VIC 3805","lat":"#{qGeocodeOrigin}.lat","lon":"#{qGeocodeOrigin}.lon"},
+            "journeyPlanner":"melbtrans",
+            "destinations":[
+              {
+                "fixed":true,"class":"work","weight":0.8,
+                "location":{"address":"19 Bourke Street, Melbourne, VIC 3000","lat":"#{qGeocodeDestination}.lat","lon":"#{qGeocodeDestination}.lon"},
+                "modes":[{"form":"transit","max":{"time":2400}}]
+              }
+            ]
+          }
+        }
+    ]' \
+  http://localhost:9876/api/v1/dep
+
+*/
+
 server.post('/api/v1/dep', [middleware.readRequestDataAsString, middleware.acceptOnlyJson], function(req, resp) {
   var deferred = Q.defer();
   qryq.dependent(deferred, req.json, api);
@@ -272,6 +303,67 @@ server.post('/api/v1/score', [middleware.readRequestDataAsString, middleware.acc
   }, function(reason) {
     resp.send(500, JSON.stringify({reason: reason}));
   });
+});
+
+var apiPrefix = '/api/v1';
+var qryqPrefix = qryqPrefix + '/qryq';
+var restPrefix = apiPrefix + '/rest';
+var restPrefixEntity = restPrefix + '/:entity';
+var restPrefixSingle = restPrefixEntity + '/:id';
+
+function crudApiName(verb, noun) {
+  return verb.toLowerCase() + noun.charAt(0).toUpperCase + ((noun.length > 1) ? noun.slice(1) : '');
+}
+
+function callApi(apiName, req, resp) {
+  var qry = {
+    id: req.params.id,
+    params: req.params,
+    query: req.query,
+    body: req.body
+  };
+  var apiFunc = api[apiName];
+  if (! apiFunc) {
+    apiFunc = api.noSuchApi;
+    qry = apiName;
+  }
+  var deferred = Q.defer();
+  apiFunc(deferred, req.json);
+  deferred.promise.then(function(result) {
+    resp.send(200, JSON.stringify(result));
+  }, function(reason) {
+    resp.send(500, JSON.stringify({reason: reason}));
+  });
+}
+
+//create 1
+server.put(restPrefixSingle, function(req, resp) {
+  var apiName = restApiName('CREATE', req.params.entity);
+  callApi(apiName, req, resp);
+});
+
+//read 1
+server.get(restPrefixSingle, function(req, resp) {
+  var apiName = restApiName('READ', req.params.entity);
+  callApi(apiName, req, resp);
+});
+
+//read *
+server.get(restPrefixEntity, function(req, resp) {
+  var apiName = restApiName('READALL', req.params.entity);
+  callApi(apiName, req, resp);
+});
+
+//update 1
+server.post(restPrefixSingle, function(req, resp) {
+  var apiName = restApiName('UPDATE', req.params.entity);
+  callApi(apiName, req, resp);
+});
+
+//delete 1
+server.delete(restPrefixSingle, function(req, resp) {
+  var apiName = restApiName('DELETE', req.params.entity);
+  callApi(apiName, req, resp);
 });
 
 server.listen(portNumber);
