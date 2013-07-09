@@ -410,32 +410,6 @@ exports.scrapeGeoLookup = function(deferred, qry) {
     console.log('completed scrape');
     deferred.resolve(result);
   });
-
-  // var scrapePromises = [];
-  // for (var idx = 0; idx < numScrapes; ++idx) {
-  //   var scrapeInp = qry[idx];
-  //   scrapePromises.push(exports.randomDelayedAsync(exports.gmapsGeoLookup, scrapeInp, delayTime, delayTime + delayDeviation));
-  //   delayTime += delayInterval;
-  //   if (delayDeviation < maxDelayDeviation) {
-  //     maxDelayDeviation += delayInterval;
-  //   }
-  // }
-  // Q.all(scrapePromises).then(function(scrapeResults) {
-  //   var out = [];
-  //   console.log('scrapeResults=', scrapeResults);
-  //   for (var idx = 0; idx < numScrapes; ++idx) {
-  //     var scrapeResult = scrapeResults[idx];
-  //     var scrapeInp = qry[idx];
-  //     var selectedResult = scrapeResult.results[0];
-  //     var singleResult = scrapeInp; //TODO use a deep clone instead
-  //     singleResult.lat = selectedResult.geometry.location.lat;
-  //     singleResult.lon = selectedResult.geometry.location.lng;
-  //     out.push(singleResult);
-  //   }
-  //   console.log('JSON.stringify(out)=', JSON.stringify(out));
-  //   fs.writeFileSync('./out.str.json', JSON.stringify(out)); //DEBUG only
-  //   deferred.resolve(out);
-  // });
 };
 
 exports.melbtrans = function(deferred, qry) {
@@ -482,22 +456,30 @@ var parseDurationString = function(inp, delim) {
   return hash;
 };
 
-exports.scoreOne = function(deferred, qry) {
-  //determine which API to call
-  var apiName = 'directions'; //gmaps
+var validateScoreOne = function(qry) {
+  var errs = [];
   if (!qry.mode.max || !(qry.mode.max.time || qry.mode.max.distance)) {
-    deferred.reject('Mode must specify either a max time or distance');
-    return;
+    errs.push('Mode must specify either a max time or distance');
   }
   if (qry.mode.form === 'transit') {
     if (!qry.mode.max.time) {
-      deferred.reject('If mode form is transit, mode max can only specify time');
-      return;
-    }
-    if (qry.journeyPlanner === 'melbtrans') {
-      apiName = 'melbtrans';
+      errs.push('If mode form is transit, mode max can only specify time');
     }
   }
+  return errs;
+};
+
+exports.scoreOne = function(deferred, qry) {
+  var errs = validateScoreOne(qry);
+  if (errs.length > 0) {
+    deferred.reject({
+      msg: 'Failed to score one',
+      errs: errs
+    });
+    return;
+  }
+  //determine which API to call
+  var apiName = (qry.journeyPlanner === 'melbtrans') ? 'melbtrans' : 'directions'; //gmaps
   var transportDeferred = Q.defer();
   var apiFunc = exports[apiName];
   var transportQry;
@@ -549,10 +531,22 @@ exports.scoreOne = function(deferred, qry) {
   });
 };
 
-// validateErrs.push('');
-// validateErrs.push('Destination #'+idx+' should ');
-// validateErrs.push('mode #'+modeIdx+' destination #'+idx+' should ');
-exports.score = function(deferred, qry) {
+
+/* {
+  "origin":{address":"36 Meadow Wood Walk, Narre Warren VIC 3805"},
+  "journeyPlanner":"melbtrans",
+  "destinations":[
+    {
+      "fixed":true,"class":"work","weight":0.8,"location":{"address":"19 Bourke Street, Melbourne, VIC 3000"},
+      "modes":[{"form":"transit","max":{"time":2400}}]
+    },
+    {
+      "class":"supermarkets","weight":0.2,
+      "modes":[{"form":"walking","weight":0.75,"max":{"distance":1000}},{"form":"driving","weight":0.25,"max":{"time":300}}]
+    }
+  ]
+} */
+var validateScore = function(qry) {
   var validateErrs = [];
   if (!_.isObject(qry)) {
     validateErrs.push('Query must be an object');
@@ -563,7 +557,13 @@ exports.score = function(deferred, qry) {
     }
     else {
       if (!(qry.origin.address && _.isString(qry.origin.address))) {
-        validateErrs.push('Query must contain a location with an address');
+        validateErrs.push('Query must contain an origin with an address');
+      }
+      if (!(qry.origin.lat && _.isNumber(qry.origin.lat))) {
+        validateErrs.push('Query must contain an origin with a numeric lat');
+      }
+      if (!(qry.origin.lon && _.isNumber(qry.origin.lon))) {
+        validateErrs.push('Query must contain an origin with a numeric lon');
       }
     }
     if (!(qry.destinations && _.isArray(qry.destinations) && qry.destinations.length > 0)) {
@@ -579,8 +579,19 @@ exports.score = function(deferred, qry) {
           if (numDestinations > 1 && !(dest.weight && _.isNumber(dest.weight))) {
             validateErrs.push('Destination #'+idx+' should specify a numeric weight as there are more than 1');
           }
-          if (!(dest.location && dest.location.address && _.isString(dest.location.address))) {
-            validateErrs.push('Destination #'+idx+' should specify an address');
+          if (!dest.location) {
+            validateErrs.push('Destination #'+idx+' should specify a location');
+          }
+          else {
+            if (!(dest.location.address && _.isString(dest.location.address))) {
+              validateErrs.push('Destination #'+idx+' should specify an address');
+            }
+            if (!(dest.location.lat && _.isNumber(dest.location.lat))) {
+              validateErrs.push('Destination #'+idx+' should specify a numeric lat');
+            }
+            if (!(dest.location.lon && _.isNumber(dest.location.lon))) {
+              validateErrs.push('Destination #'+idx+' should specify a numeric lon');
+            }
           }
           if (!(dest.modes && _.isArray(dest.modes) && dest.modes.length > 0)) {
             validateErrs.push('Destination #'+idx+' should specify at least one mode');
@@ -623,7 +634,12 @@ exports.score = function(deferred, qry) {
       });
     }
   }
-  if (validateErrs.length > 0) {
+  return validateErrs;
+};
+
+exports.score = function(deferred, qry) {
+  var validateErrs = validateScore(qry);
+  if (!validateErrs || validateErrs.length > 0) {
     deferred.reject({
       msg: 'Score could not be computed',
       errors: validateErrs
@@ -631,161 +647,93 @@ exports.score = function(deferred, qry) {
     return;
   }
   qry.journeyPlanner = qry.journeyPlanner || 'gmaps';
-  var needGeo =
-    (qry.journeyPlanner === 'melbtrans')
-    || _.some(qry.destinations, function(destination) {
-      destination.hasOwnProperty('fixed') && (destination.fixed === true);
-    });
-  var originPromises = [];
-  var destinationPromises = [];
-  if (needGeo) {
-    //get geolocations for all locations present
-    if (!qry.origin.lat || !qry.origin.lon) {
-      var originGeoDeferred = Q.defer();
-      exports.gmapsGeoLookup(originGeoDeferred, qry.origin);
-      originPromises.push(originGeoDeferred.promise);
-    }
-    _.each(qry.destinations, function(destination) {
-      var destGeoDeferred = Q.defer();
-      exports.gmapsGeoLookup(destGeoDeferred, destination.location);
-      destinationPromises.push(destGeoDeferred.promise);
-    }, this);
-  }
-  var originPromisesDeferred = Q.defer();
-  Q.allSettled(originPromises).then(function(results) {
-    _.each(results, function(result) {
-      if (result.state === 'fulfilled') {
-        var val = result.value;
-        qry.origin.lat = val.lat;
-        qry.origin.lon = val.lon;
-      }
-      else {
-        console.log('originPromises allSettled:', result.error);
-      }
-    }, this);
-    originPromisesDeferred.resolve(qry.origin);
-  });
-  var destinationsPromisesDeferred = Q.defer();
-  Q.allSettled(destinationPromises).then(function(results) {
-    _.each(results, function(result, idx) {
-      if (result.state === 'fulfilled') {
-        var val = result.value;
-        qry.destinations[idx].location.lat = val.lat;
-        qry.destinations[idx].location.lon = val.lon;
-      }
-      else {
-        console.log('destinationPromises allSettled:', result.error);
-      }
-    }, this);
-    destinationsPromisesDeferred.resolve(qry.destinations);
-  });
-  Q.allSettled([originPromisesDeferred.promise, destinationsPromisesDeferred.promise]).then(function(results) {
-    //we don't care about the results returned, because they were modified in place in the qry object
-    //more importantly, we are now assured that all addresses have a lat and lon, if needGeo is true
-    var scorePromises = [];
 
-    //get the transport information from the origin to each destination using each transport mode
-    var origin = qry.origin;
-    _.each(qry.destinations, function(destination) {
-      //TODO check that weights add up for destinations
-      _.each(destination.modes, function(mode) {
-        //we have origin, destination, and mode
-        //TODO check that weights add up for modes
-        //now work out the transport information between this origin and this destination using this mode
-        var scoreDeferred = Q.defer();
-        scorePromises.push(scoreDeferred.promise);
-        exports.scoreOne(scoreDeferred, {
-          origin: origin,
-          destination: destination.location,
-          mode: mode,
-          journeyPlanner: qry.journeyPlanner
-        });
+  var scorePromises = [];
+  //get the transport information from the origin to each destination using each transport mode
+  var origin = qry.origin;
+  _.each(qry.destinations, function(destination) {
+    //TODO check that weights add up for destinations
+    _.each(destination.modes, function(mode) {
+      //we have origin, destination, and mode
+      //TODO check that weights add up for modes
+      //now work out the transport information between this origin and this destination using this mode
+      var scoreDeferred = Q.defer();
+      scorePromises.push(scoreDeferred.promise);
+      exports.scoreOne(scoreDeferred, {
+        origin: origin,
+        destination: destination.location,
+        mode: mode,
+        journeyPlanner: qry.journeyPlanner
       });
-    }, this);
+    });
+  });
 
-    Q.allSettled(scorePromises).then(function(scoreResults) {
-      var orig_dest_mode = {};
-      _.each(scoreResults, function(result) {
-        if (result.state === 'fulfilled') {
-          var score = result.value;
-          orig_dest_mode[score.origin.address] = 
-            orig_dest_mode[score.origin.address] || 
-            {};
-          orig_dest_mode[score.origin.address][score.destination.address] = 
-            orig_dest_mode[score.origin.address][score.destination.address] || 
-            {};
-          orig_dest_mode[score.origin.address][score.destination.address][score.mode.form] = 
-            orig_dest_mode[score.origin.address][score.destination.address][score.mode.form] || 
-            {
-              origin: score.origin,
-              destination: score.destination,
-              mode: score.mode,
-              score: score.score
-            };
+  Q.allSettled(scorePromises).then(function(scoreResults) {
+    var orig_dest_mode = {};
+    _.each(scoreResults, function(result) {
+      if (result.state === 'fulfilled') {
+        var score = result.value;
+        orig_dest_mode[score.origin.address] = 
+          orig_dest_mode[score.origin.address] || 
+          {};
+        orig_dest_mode[score.origin.address][score.destination.address] = 
+          orig_dest_mode[score.origin.address][score.destination.address] || 
+          {};
+        orig_dest_mode[score.origin.address][score.destination.address][score.mode.form] = 
+          orig_dest_mode[score.origin.address][score.destination.address][score.mode.form] || 
+          {
+            origin: score.origin,
+            destination: score.destination,
+            mode: score.mode,
+            score: score.score
+          };
+      }
+      else {
+        console.log('scorePromises allSettled:', result.error);
+      }
+    });
+
+    // parse weights to calculate aggregate score, iterate over original qry rather than score results,
+    //in case some results are rejections
+    var origin = qry.origin;
+    var destinationWeightSum = 0;
+    var destinationScoreSum = 0;
+    var calcErrors = [];
+    _.each(qry.destinations, function(destination) {
+      var destinationWeight = destination.weight || 1.0;
+      destinationWeightSum += destinationWeight;
+      var modeWeightSum = 0;
+      var modeScoreSum = 0;
+      _.each(destination.modes, function(mode) {
+        var modeWeight = mode.weight || 1.0;
+        modeWeightSum += modeWeight;
+        var modeScore = 0;
+        if (
+          orig_dest_mode[origin.address] &&
+          orig_dest_mode[origin.address][destination.location.address] &&
+          orig_dest_mode[origin.address][destination.location.address][mode.form]) {
+          modeScore = orig_dest_mode[origin.address][destination.location.address][mode.form].score;
         }
         else {
-          console.log('scorePromises allSettled:', result.error);
+          calcErrors.push('No data available for journey from '+origin.address+
+            ' to '+destination.address+
+            ' by '+mode.form);
         }
+        modeScoreSum += (modeScore * modeWeight);
       });
-
-      // parse weights to calculate aggregate score, iterate over original qry rather than score results,
-      //in case some results are rejections
-      var origin = qry.origin;
-      var destinationWeightSum = 0;
-      var destinationScoreSum = 0;
-      var calcErrors = [];
-      _.each(qry.destinations, function(destination) {
-        var destinationWeight = destination.weight || 1.0;
-        destinationWeightSum += destinationWeight;
-        var modeWeightSum = 0;
-        var modeScoreSum = 0;
-        _.each(destination.modes, function(mode) {
-          var modeWeight = mode.weight || 1.0;
-          modeWeightSum += modeWeight;
-          var modeScore = 0;
-          if (
-            orig_dest_mode[origin.address] &&
-            orig_dest_mode[origin.address][destination.location.address] &&
-            orig_dest_mode[origin.address][destination.location.address][mode.form]) {
-            modeScore = orig_dest_mode[origin.address][destination.location.address][mode.form].score;
-          }
-          else {
-            calcErrors.push('No data available for journey from '+origin.address+
-              ' to '+destination.address+
-              ' by '+mode.form);
-          }
-          modeScoreSum += (modeScore * modeWeight);
-        });
-        destinationScoreSum += (modeScoreSum / modeWeightSum * destinationWeight);
-      });
-      destinationScoreSum = destinationScoreSum / destinationWeightSum;
-      //divide by weight sums to scale to 0 to 1 range
-
-      var out = {
-        score: (destinationScoreSum * 0.5),
-        errors: calcErrors,
-        raw: scoreResults
-      };
-      deferred.resolve(out);
+      destinationScoreSum += (modeScoreSum / modeWeightSum * destinationWeight);
     });
-  });
-  // setTimeout(function() {deferred.resolve({echo:qry})}, 1000); //DEBUG output
-};
+    destinationScoreSum = destinationScoreSum / destinationWeightSum;
+    //divide by weight sums to scale to 0 to 1 range
 
-/* {
-  "origin":{address":"36 Meadow Wood Walk, Narre Warren VIC 3805"},
-  "journeyPlanner":"melbtrans",
-  "destinations":[
-    {
-      "fixed":true,"class":"work","weight":0.8,"location":{"address":"19 Bourke Street, Melbourne, VIC 3000"},
-      "modes":[{"form":"transit","max":{"time":2400}}]
-    },
-    {
-      "class":"supermarkets","weight":0.2,
-      "modes":[{"form":"walking","weight":0.75,"max":{"distance":1000}},{"form":"driving","weight":0.25,"max":{"time":300}}]
-    }
-  ]
-} */
+    var out = {
+      score: (destinationScoreSum * 0.5),
+      errors: calcErrors,
+      raw: scoreResults
+    };
+    deferred.resolve(out);
+  });
+};
 
 exports.testDagQueue = function(deferred, qry) {
     var batch = [
